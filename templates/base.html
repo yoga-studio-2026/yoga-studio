@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}瑜伽馆运营管理系统{% endblock %}</title>
+    
+    <!-- PWA 支持 -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="瑜伽馆管理">
+    <link rel="apple-touch-icon" href="/static/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/static/icons/icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="96x96" href="/static/icons/icon-96x96.png">
+    <link rel="apple-touch-icon" sizes="128x128" href="/static/icons/icon-128x128.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/static/icons/icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="/static/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="/static/icons/icon-512x512.png">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- 侧边栏遮罩 -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- 侧边栏 -->
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        🧘 {{ studio_name or '瑜伽馆' }}
+        <small>运营管理系统</small>
+    </div>
+    <div class="sidebar-user">
+        <span class="user-name">👤 {{ session.get('username', '用户') }}</span>
+        <a href="/logout" class="logout-btn">退出登录</a>
+    </div>
+    <div class="sidebar-nav">
+        <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}">
+            <span class="icon"><i class="bi bi-grid-1x2-fill"></i></span> 数据看板
+        </a>
+        <a href="/members" class="{% if active_page == 'members' %}active{% endif %}">
+            <span class="icon"><i class="bi bi-people-fill"></i></span> 会员管理
+        </a>
+        <a href="/classes" class="{% if active_page == 'classes' %}active{% endif %}">
+            <span class="icon"><i class="bi bi-calendar-check-fill"></i></span> 上课记录
+        </a>
+        <a href="/booking" class="{% if active_page == 'booking' %}active{% endif %}">
+            <span class="icon"><i class="bi bi-calendar-plus-fill"></i></span> 会员预约
+        </a>
+        <a href="/finance" class="{% if active_page == 'finance' %}active{% endif %}">
+            <span class="icon"><i class="bi bi-currency-yen"></i></span> 财务管理
+        </a>
+    </div>
+    <div class="sidebar-footer">
+        <a href="/logout" class="logout-link"><i class="bi bi-box-arrow-left"></i> 退出登录</a>
+    </div>
+</nav>
+
+<!-- 主内容 -->
+<div class="main-content">
+    <div class="page-header">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+            <h2>{% block page_title %}看板{% endblock %}</h2>
+        </div>
+        <div style="font-size:13px;color:#999;">
+            {% block page_actions %}{% endblock %}
+        </div>
+    </div>
+    <div class="page-body">
+        {% block content %}{% endblock %}
+    </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ========== Service Worker 注册（PWA 支持）==========
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/static/sw.js')
+            .then(function(registration) {
+                console.log('[PWA] Service Worker 注册成功:', registration.scope);
+            })
+            .catch(function(error) {
+                console.log('[PWA] Service Worker 注册失败:', error);
+            });
+    });
+}
+
+// ========== PWA 安装提示 ==========
+var deferredPrompt = null;
+var installBtn = null;
+
+window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    console.log('[PWA] 可以安装到桌面');
+    
+    // 可以在这里显示一个「安装到桌面」按钮
+    // 用户点击后调用: deferredPrompt.prompt();
+});
+
+window.addEventListener('appinstalled', function() {
+    console.log('[PWA] 应用已安装到桌面');
+    deferredPrompt = null;
+});
+</script>
+
+<script>
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('show');
+}
+document.getElementById('sidebarOverlay')?.addEventListener('click', function() {
+    document.getElementById('sidebar').classList.remove('open');
+    this.classList.remove('show');
+});
+
+// Toast 提示
+function showToast(msg, type) {
+    type = type || 'success';
+    var c = document.getElementById('toastContainer');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + type;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 3000);
+}
+</script>
+
+<script>
+// ========== 公共工具函数（所有页面共享）==========
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
+function renderPagination(containerId, total, page, perPage) {
+    var totalPages = Math.ceil(total / perPage);
+    var c = document.getElementById(containerId);
+    c.innerHTML = '';
+    if (totalPages <= 1) return;
+    if (page > 1) c.innerHTML += '<button onclick="' + containerId + 'Page(' + (page-1) + ')">上一页</button>';
+    for (var i = Math.max(1, page-2); i <= Math.min(totalPages, page+2); i++) {
+        c.innerHTML += '<button class="' + (i === page ? 'active' : '') + '" onclick="' + containerId + 'Page(' + i + ')">' + i + '</button>';
+    }
+    if (page < totalPages) c.innerHTML += '<button onclick="' + containerId + 'Page(' + (page+1) + ')">下一页</button>';
+}
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

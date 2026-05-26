@@ -1,0 +1,732 @@
+{% extends "base.html" %}
+{% block title %}上课记录 - 瑜伽馆管理系统{% endblock %}
+{% block page_title %}📝 上课记录{% endblock %}
+{% block page_actions %}
+<button class="btn btn-primary btn-sm" onclick="openAddClassModal()">+ 记上课</button>
+&nbsp;&nbsp;<button class="btn btn-sm btn-outline" onclick="refreshClasses()" title="刷新">🔄</button>
+{% endblock %}
+
+{% set active_page = 'classes' %}
+
+{% block content %}
+
+<!-- 今日上课概览 -->
+<div class="today-overview">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <h5 style="margin:0;font-size:18px;">📅 上课记录查询</h5>
+        <input type="date" id="datePicker" class="form-control" style="max-width:180px;" onchange="onDateChange()">
+        <span id="todayDate" style="color:#888;font-size:14px;"></span>
+        <span id="todayStats" style="margin-left:auto;font-size:13px;color:#666;"></span>
+    </div>
+    <div id="todayRecords" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="text-align:center;padding:30px;color:#999;">加载中...</div>
+    </div>
+</div>
+
+<!-- 按会员查看 -->
+<div style="margin-top:24px;border-top:1px solid #eee;padding-top:20px;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <h5 style="margin:0;font-size:16px;">👤 按会员查看历史记录</h5>
+        <input type="text" class="form-control" id="memberSearch" placeholder="搜索会员..." 
+               style="max-width:220px;margin-left:auto;" oninput="filterMembers()">
+    </div>
+    <div class="member-class-layout">
+        <div class="member-list-panel">
+            <div class="member-list" id="memberList">
+                <div style="text-align:center;padding:20px;color:#999;">加载中...</div>
+            </div>
+        </div>
+        <div class="class-history-panel">
+            <div class="panel-header">
+                <span id="selectedMemberName" style="font-weight:600;font-size:15px;">点击左侧会员查看记录</span>
+                <span id="classCount" style="font-size:13px;color:#888;"></span>
+            </div>
+            <div class="class-history" id="classHistory">
+                <div style="text-align:center;padding:40px;color:#999;">
+                    ← 点击左侧会员查看上课记录
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加上课记录模态框 -->
+<div class="modal-overlay" id="classModal">
+    <div class="modal-box" style="max-width:520px;">
+        <h4>➕ 记上课</h4>
+        <form id="classForm" onsubmit="return saveClass()">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <label class="form-label">日期 *</label>
+                    <input class="form-control" id="cDate" type="date" required>
+                </div>
+                <div>
+                    <label class="form-label">时间 *</label>
+                    <input class="form-control" id="cTime" type="time" value="09:00" required>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+                <div>
+                    <label class="form-label">课程类型</label>
+                    <select class="form-select" id="cType">
+                        <option>流瑜伽</option>
+                        <option>哈他瑜伽</option>
+                        <option>阴瑜伽</option>
+                        <option>阿斯汤加</option>
+                        <option>理疗瑜伽</option>
+                        <option>空中瑜伽</option>
+                        <option>普拉提</option>
+                        <option>私教</option>
+                        <option>其他</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">老师</label>
+                    <select class="form-select" id="cCoach">
+                        <option>杨老师</option>
+                        <option>林老师</option>
+                        <option>陈老师</option>
+                        <option>黄老师</option>
+                        <option>唐老师</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <label class="form-label">备注</label>
+                <input class="form-control" id="cNotes" placeholder="可选">
+            </div>
+            <div style="margin-top:16px;">
+                <label class="form-label">选择上课会员（可多选）</label>
+                <div class="member-checkbox-list" id="memberCheckboxList">
+                    <div style="text-align:center;padding:12px;color:#999;">加载中...</div>
+                </div>
+            </div>
+            <div style="margin-top:8px;font-size:12px;color:#888;">
+                已选 <span id="selectedCount">0</span> 人
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('classModal')">取消</button>
+                <button type="submit" class="btn btn-success" id="saveClassBtn">确认上课</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 编辑上课记录模态框 -->
+<div class="modal-overlay" id="editClassModal">
+    <div class="modal-box" style="max-width:440px;">
+        <h4>✏️ 编辑上课记录</h4>
+        <form id="editClassForm" onsubmit="return updateClass()">
+            <input type="hidden" id="editRecordId">
+            <input type="hidden" id="editMemberId">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <label class="form-label">日期 *</label>
+                    <input class="form-control" id="editDate" type="date" required>
+                </div>
+                <div>
+                    <label class="form-label">时间 *</label>
+                    <input class="form-control" id="editTime" type="time" required>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+                <div>
+                    <label class="form-label">课程类型</label>
+                    <select class="form-select" id="editType">
+                        <option>流瑜伽</option>
+                        <option>哈他瑜伽</option>
+                        <option>阴瑜伽</option>
+                        <option>阿斯汤加</option>
+                        <option>理疗瑜伽</option>
+                        <option>空中瑜伽</option>
+                        <option>普拉提</option>
+                        <option>私教</option>
+                        <option>其他</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">老师</label>
+                    <select class="form-select" id="editCoach">
+                        <option>杨老师</option>
+                        <option>林老师</option>
+                        <option>陈老师</option>
+                        <option>黄老师</option>
+                        <option>唐老师</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <label class="form-label">备注</label>
+                <input class="form-control" id="editNotes">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editClassModal')">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var allMembers = [];
+var currentMemberId = null;
+var currentDate = new Date().toISOString().slice(0,10); // 当前选中的日期
+
+var REFRESH_INTERVAL = 20; // 秒
+var refreshTimer = null;
+
+function refreshClasses() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    loadTodayRecords();
+    loadMembers();
+    refreshTimer = setTimeout(refreshClasses, REFRESH_INTERVAL * 1000);
+}
+
+function onDateChange() {
+    currentDate = document.getElementById('datePicker').value;
+    loadTodayRecords();
+}
+
+// ============ 今日上课记录 ============
+function loadTodayRecords() {
+    fetch('/api/classes/today?date=' + currentDate)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            var today = d.date;
+            var dateObj = new Date(today + 'T00:00:00');
+            var dayOfWeek = ['日','一','二','三','四','五','六'][dateObj.getDay()];
+            document.getElementById('todayDate').textContent = today + ' 周' + dayOfWeek;
+            document.getElementById('datePicker').value = today;
+
+            var records = d.records || [];
+            var totalMembers = 0;
+            records.forEach(function(r){ totalMembers += r.members.length; });
+            document.getElementById('todayStats').textContent = 
+                '今日 ' + records.length + ' 节课 / ' + totalMembers + ' 人次';
+
+            var container = document.getElementById('todayRecords');
+            if (records.length === 0) {
+                container.innerHTML = '<div style="text-align:center;padding:40px;color:#999;background:#f8f9fc;border-radius:12px;">📋 今日暂无上课记录</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            records.forEach(function(r){
+                var card = document.createElement('div');
+                card.className = 'today-class-card';
+
+                var memberHtml = '';
+                if (r.members.length > 0) {
+                    memberHtml = '<div class="today-members">';
+                    r.members.forEach(function(m){
+                        memberHtml += '<span class="today-member-tag">' + 
+                            '<span class="member-dot"></span>' + escHtml(m.name) + 
+                            '<span style="color:#aaa;font-size:11px;margin-left:4px;">' + escHtml(m.card_type) + '</span>' +
+                        '</span>';
+                    });
+                    memberHtml += '</div>';
+                }
+
+                var consumeTotal = 0;
+                r.members.forEach(function(m){ consumeTotal += (m.price_per_class || 0); });
+
+                card.innerHTML = 
+                    '<div class="today-card-header">' +
+                        '<div class="today-card-left">' +
+                            '<span class="today-time">' + (r.time || '--:--') + '</span>' +
+                            '<span class="today-type">' + escHtml(r.class_type || '未分类') + '</span>' +
+                        '</div>' +
+                        '<div class="today-card-right">' +
+                            '<span class="today-coach">👤 ' + escHtml(r.coach || '-') + '</span>' +
+                            (consumeTotal > 0 ? '<span class="today-consume">消卡 ¥' + consumeTotal.toFixed(0) + '</span>' : '') +
+                            '<span class="today-count">' + r.members.length + ' 人</span>' +
+                        '</div>' +
+                    '</div>' +
+                    memberHtml +
+                    (r.notes ? '<div class="today-notes">📝 ' + escHtml(r.notes) + '</div>' : '') +
+                    '<div class="today-card-actions">' +
+                        '<button class="btn btn-sm btn-outline" onclick="openEditModal(' + r.class_id + ', null, \'' + r.date + '\', \'' + escHtml(r.time || '') + '\', \'' + escHtml(r.class_type || '') + '\', \'' + escHtml(r.coach || '') + '\', \'' + escHtml(r.notes || '') + '\')">编辑</button>' +
+                        '<button class="btn btn-sm btn-danger" onclick="deleteTodayRecord(' + r.class_id + ')">删除</button>' +
+                    '</div>';
+
+                container.appendChild(card);
+            });
+        });
+}
+
+function deleteTodayRecord(classId) {
+    if (!confirm('确定删除这条上课记录吗？会员课时将恢复。')) return;
+    fetch('/api/classes/' + classId, { method: 'DELETE' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                showToast('记录已删除，课时已恢复', 'success');
+                loadTodayRecords();
+                loadMembers();
+            }
+        });
+}
+
+// ============ 会员列表 & 历史记录 ============
+function loadMembers() {
+    fetch('/api/members/all')
+        .then(function(r){ return r.json(); })
+        .then(function(members){
+            allMembers = members;
+            renderMemberList(members);
+        });
+}
+
+function filterMembers() {
+    var keyword = document.getElementById('memberSearch').value.toLowerCase();
+    var filtered = allMembers.filter(function(m){
+        return m.name.toLowerCase().includes(keyword) || 
+               (m.phone && m.phone.includes(keyword));
+    });
+    renderMemberList(filtered);
+}
+
+function renderMemberList(members) {
+    var list = document.getElementById('memberList');
+    list.innerHTML = '';
+    
+    if (members.length === 0) {
+        list.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">暂无会员</div>';
+        return;
+    }
+    
+    members.forEach(function(m){
+        var item = document.createElement('div');
+        item.className = 'member-item' + (m.id === currentMemberId ? ' active' : '');
+        item.onclick = function(){ selectMember(m.id, m.name); };
+        
+        var statusClass = m.remaining_classes > 0 ? 'badge-success' : 'badge-warning';
+        var statusText = m.remaining_classes > 0 ? '余' + m.remaining_classes + '节' : '已用完';
+        
+        item.innerHTML = '<div class="member-info">' +
+            '<span class="member-name">' + escHtml(m.name) + '</span>' +
+            '<span class="member-card">' + escHtml(m.card_type || '-') + '</span>' +
+        '</div>' +
+        '<span class="badge ' + statusClass + '">' + statusText + '</span>';
+        
+        list.appendChild(item);
+    });
+}
+
+function selectMember(mid, name) {
+    currentMemberId = mid;
+    document.getElementById('selectedMemberName').textContent = '📋 ' + name + ' 的上课记录';
+    
+    document.querySelectorAll('.member-item').forEach(function(el, idx){
+        el.classList.toggle('active', allMembers[idx] && allMembers[idx].id === mid);
+    });
+    
+    fetch('/api/members/' + mid + '/history')
+        .then(function(r){ return r.json(); })
+        .then(function(records){
+            renderClassHistory(records, mid);
+        });
+}
+
+function renderClassHistory(records, memberId) {
+    var container = document.getElementById('classHistory');
+    document.getElementById('classCount').textContent = '共 ' + records.length + ' 次课';
+    
+    if (records.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">暂无上课记录</div>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    records.forEach(function(r){
+        var card = document.createElement('div');
+        card.className = 'class-record-card';
+        
+        var dateObj = new Date(r.date);
+        var dayOfWeek = ['日','一','二','三','四','五','六'][dateObj.getDay()];
+        var timeDisplay = r.time || '未记录';
+        var dateDisplay = r.date + ' (周' + dayOfWeek + ') ' + timeDisplay;
+        
+        card.innerHTML = '<div class="record-header">' +
+            '<span class="record-date">' + dateDisplay + '</span>' +
+            '<span class="record-type">' + escHtml(r.class_type || '未分类') + '</span>' +
+        '</div>' +
+        '<div class="record-body">' +
+            '<div class="record-detail"><i class="bi bi-person"></i> ' + escHtml(r.coach || '-') + '</div>' +
+            '<div class="record-notes">' + escHtml(r.notes || '无备注') + '</div>' +
+        '</div>' +
+        '<div class="record-actions">' +
+            '<button class="btn btn-sm btn-outline" onclick="openEditModal(' + r.class_id + ', ' + memberId + ', \'' + r.date + '\', \'' + escHtml(r.time || '') + '\', \'' + escHtml(r.class_type || '') + '\', \'' + escHtml(r.coach || '') + '\', \'' + escHtml(r.notes || '') + '\')">编辑</button>' +
+            '<button class="btn btn-sm btn-danger" onclick="deleteRecord(' + r.class_id + ', ' + memberId + ')">删除</button>' +
+        '</div>';
+        
+        container.appendChild(card);
+    });
+}
+
+function deleteRecord(recordId, memberId) {
+    if (!confirm('确定删除这条上课记录吗？课时将恢复。')) return;
+    
+    fetch('/api/classes/' + recordId, { method: 'DELETE' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                showToast('记录已删除，课时已恢复', 'success');
+                selectMember(memberId, document.getElementById('selectedMemberName').textContent.replace('📋 ', '').replace(' 的上课记录', ''));
+                loadMembers();
+                loadTodayRecords();
+            }
+        });
+}
+
+// ============ 添加上课记录 ============
+function openAddClassModal() {
+    document.getElementById('classForm').reset();
+    document.getElementById('cDate').value = new Date().toISOString().slice(0,10);
+    document.getElementById('cTime').value = '09:00';
+    document.getElementById('saveClassBtn').disabled = false;
+    document.getElementById('selectedCount').textContent = '0';
+
+    fetch('/api/members/all')
+        .then(function(r){ return r.json(); })
+        .then(function(members){
+            var list = document.getElementById('memberCheckboxList');
+            list.innerHTML = '';
+            if (members.length === 0) {
+                list.innerHTML = '<div style="text-align:center;padding:12px;color:#999;">暂无活跃会员</div>';
+                return;
+            }
+            members.forEach(function(m){
+                if (m.remaining_classes <= 0) return;
+                var item = document.createElement('label');
+                item.className = 'member-checkbox-item';
+                item.innerHTML = '<input type="checkbox" class="member-check" value="' + m.id + '" data-name="' + escHtml(m.name) + '" onchange="updateSelectedCount()"> ' +
+                    escHtml(m.name) + ' <span style="color:#999;font-size:12px;">(' + escHtml(m.card_type) + ', 余' + m.remaining_classes + '节)</span>';
+                list.appendChild(item);
+            });
+            updateSelectedCount();
+        });
+
+    document.getElementById('classModal').classList.add('show');
+}
+
+function updateSelectedCount() {
+    var count = document.querySelectorAll('.member-check:checked').length;
+    document.getElementById('selectedCount').textContent = count;
+}
+
+function saveClass() {
+    var checkboxes = document.querySelectorAll('.member-check:checked');
+    var memberIds = [];
+    checkboxes.forEach(function(cb){ memberIds.push(parseInt(cb.value)); });
+
+    if (memberIds.length === 0) {
+        showToast('请选择至少一位上课会员', 'error');
+        return false;
+    }
+
+    document.getElementById('saveClassBtn').disabled = true;
+
+    var data = {
+        date: document.getElementById('cDate').value,
+        time: document.getElementById('cTime').value,
+        coach: document.getElementById('cCoach').value,
+        class_type: document.getElementById('cType').value,
+        notes: document.getElementById('cNotes').value,
+        member_ids: memberIds
+    };
+
+    fetch('/api/classes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('上课记录已保存，已自动扣减 ' + memberIds.length + ' 位会员课时');
+            closeModal('classModal');
+            loadMembers();
+            loadTodayRecords();
+            if (currentMemberId) {
+                selectMember(currentMemberId, document.getElementById('selectedMemberName').textContent.replace('📋 ', '').replace(' 的上课记录', ''));
+            }
+        } else {
+            showToast('保存失败', 'error');
+            document.getElementById('saveClassBtn').disabled = false;
+        }
+    });
+    return false;
+}
+
+// ============ 编辑上课记录 ============
+function openEditModal(recordId, memberId, date, time, classType, coach, notes) {
+    document.getElementById('editRecordId').value = recordId;
+    document.getElementById('editMemberId').value = memberId || '';
+    document.getElementById('editDate').value = date;
+    document.getElementById('editTime').value = time || '09:00';
+    document.getElementById('editType').value = classType || '流瑜伽';
+    document.getElementById('editCoach').value = coach || '杨老师';
+    document.getElementById('editNotes').value = notes || '';
+    document.getElementById('editClassModal').classList.add('show');
+}
+
+function updateClass() {
+    var recordId = document.getElementById('editRecordId').value;
+    var memberId = document.getElementById('editMemberId').value;
+    
+    var data = {
+        date: document.getElementById('editDate').value,
+        time: document.getElementById('editTime').value,
+        class_type: document.getElementById('editType').value,
+        coach: document.getElementById('editCoach').value,
+        notes: document.getElementById('editNotes').value
+    };
+    
+    fetch('/api/classes/' + recordId, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('记录已更新', 'success');
+            closeModal('editClassModal');
+            loadTodayRecords();
+            if (memberId) {
+                selectMember(parseInt(memberId), document.getElementById('selectedMemberName').textContent.replace('📋 ', '').replace(' 的上课记录', ''));
+            }
+        } else {
+            showToast('更新失败: ' + (d.error || ''), 'error');
+        }
+    });
+    return false;
+}
+
+// 初始化
+refreshClasses();
+</script>
+
+<style>
+.today-overview {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    padding: 20px;
+}
+
+.today-class-card {
+    background: #f8f9fc;
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid #e8ecf0;
+    transition: box-shadow 0.2s;
+}
+.today-class-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.today-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.today-card-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.today-card-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+}
+
+.today-time {
+    font-size: 18px;
+    font-weight: 700;
+    color: #4f46e5;
+}
+
+.today-type {
+    background: #4f46e5;
+    color: #fff;
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.today-coach {
+    color: #666;
+}
+
+.today-consume {
+    color: #f59e0b;
+    font-weight: 600;
+}
+
+.today-count {
+    background: #e8ecff;
+    color: #4f46e5;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.today-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.today-member-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 16px;
+    padding: 4px 12px;
+    font-size: 13px;
+    color: #333;
+}
+
+.member-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    display: inline-block;
+}
+
+.today-notes {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 10px;
+}
+
+.today-card-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #e0e4e8;
+}
+
+/* 会员列表区域 */
+.member-class-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 20px;
+    height: 400px;
+}
+
+.member-list-panel, .class-history-panel {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.member-list {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.member-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.member-item:hover { background: #f5f7ff; }
+.member-item.active { background: #e8ecff; border-left: 3px solid #4f46e5; }
+
+.member-info { display: flex; flex-direction: column; gap: 3px; }
+.member-name { font-weight: 600; color: #333; font-size: 14px; }
+.member-card { font-size: 12px; color: #888; }
+
+.class-history {
+    overflow-y: auto;
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.class-record-card {
+    background: #f8f9fc;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #e8ecf0;
+}
+
+.record-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.record-date { font-weight: 600; color: #333; font-size: 13px; }
+.record-type {
+    background: #4f46e5; color: #fff; padding: 2px 10px;
+    border-radius: 12px; font-size: 11px;
+}
+.record-body { margin-bottom: 8px; }
+.record-detail { font-size: 12px; color: #666; margin-bottom: 3px; }
+.record-notes { font-size: 11px; color: #888; }
+.record-actions {
+    display: flex; gap: 8px; padding-top: 8px;
+    border-top: 1px solid #e0e4e8;
+}
+
+.member-checkbox-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 8px;
+}
+.member-checkbox-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.member-checkbox-item:hover { background: #f5f7ff; }
+
+@media (max-width: 768px) {
+    .member-class-layout {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+    .member-list-panel { max-height: 250px; }
+    .today-card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .today-card-right { gap: 8px; }
+}
+</style>
+{% endblock %}

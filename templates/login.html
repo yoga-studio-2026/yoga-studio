@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if show_register %}注册账户{% else %}登录{% endif %} - 瑜伽馆管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            width: 100%;
+            max-width: 420px;
+            margin: 20px;
+        }
+        
+        .login-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .login-header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .login-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .login-body {
+            padding: 40px 30px;
+        }
+        
+        .form-floating {
+            margin-bottom: 20px;
+        }
+        
+        .form-floating input {
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            padding: 16px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .form-floating input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-floating label {
+            padding: 16px;
+            color: #888;
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .login-footer {
+            text-align: center;
+            padding: 20px 30px 30px;
+            color: #888;
+            font-size: 14px;
+        }
+        
+        .login-footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+        
+        .alert {
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .studio-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 40px;
+        }
+        
+        .password-hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="studio-icon">🧘</div>
+            <h1>{% if show_register %}注册账户{% else %}欢迎回来{% endif %}</h1>
+            <p>{% if show_register %}创建您的瑜伽馆账户{% else %}登录瑜伽馆管理系统{% endif %}</p>
+        </div>
+        
+        <div class="login-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            {% if show_register %}
+            <!-- 注册表单 -->
+            <form method="POST" action="{{ url_for('register') }}">
+                <div class="form-floating">
+                    <input type="text" class="form-control" id="studio_name" name="studio_name" 
+                           placeholder="瑜伽馆名称" required>
+                    <label for="studio_name">🏠 瑜伽馆名称</label>
+                </div>
+                
+                <div class="form-floating">
+                    <input type="text" class="form-control" id="username" name="username" 
+                           placeholder="用户名" required>
+                    <label for="username">👤 用户名（用于登录）</label>
+                </div>
+                
+                <div class="form-floating">
+                    <input type="password" class="form-control" id="password" name="password" 
+                           placeholder="密码" required minlength="6">
+                    <label for="password">🔒 密码</label>
+                </div>
+                <p class="password-hint">密码至少6位</p>
+                
+                <div class="form-floating">
+                    <input type="password" class="form-control" id="password2" name="password2" 
+                           placeholder="确认密码" required>
+                    <label for="password2">🔒 确认密码</label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-login">创建账户</button>
+            </form>
+            {% else %}
+            <!-- 登录表单 -->
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="form-floating">
+                    <input type="text" class="form-control" id="username" name="username" 
+                           placeholder="用户名" required autofocus>
+                    <label for="username">👤 用户名</label>
+                </div>
+                
+                <div class="form-floating">
+                    <input type="password" class="form-control" id="password" name="password" 
+                           placeholder="密码" required>
+                    <label for="password">🔒 密码</label>
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-login">登录</button>
+            </form>
+            {% endif %}
+        </div>
+        
+        <div class="login-footer">
+            {% if show_register %}
+                已有账户？<a href="{{ url_for('login') }}">立即登录</a>
+            {% else %}
+                还没有账户？<a href="{{ url_for('register') }}">立即注册</a>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

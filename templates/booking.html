@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block title %}会员预约 - 瑜伽馆管理系统{% endblock %}
+{% block page_title %}📅 会员预约{% endblock %}
+{% block page_actions %}
+<button class="btn btn-primary btn-sm" onclick="openAddBookingModal()">+ 新建预约</button>
+{% endblock %}
+
+{% set active_page = 'booking' %}
+
+{% block content %}
+<div class="booking-container">
+    <!-- 筛选栏 -->
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label>日期筛选：</label>
+            <input type="date" class="form-control" id="filterDate" value="" onchange="loadBookings()">
+            <button class="btn btn-sm btn-outline" onclick="document.getElementById('filterDate').value='';loadBookings()">全部</button>
+        </div>
+        <div class="filter-group">
+            <label>状态：</label>
+            <select class="form-select" id="filterStatus" onchange="loadBookings()">
+                <option value="">全部</option>
+                <option value="booked">已预约</option>
+                <option value="attended">已上课</option>
+                <option value="cancelled">已取消</option>
+                <option value="noshow">爽约</option>
+            </select>
+        </div>
+        <span id="totalCount" style="margin-left:auto;font-size:13px;color:#888;"></span>
+    </div>
+
+    <!-- 预约列表 -->
+    <div class="booking-list" id="bookingList">
+        <div style="text-align:center;padding:40px;color:#999;">加载中...</div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination" id="bookingPagination"></div>
+</div>
+
+<!-- 新建预约模态框 -->
+<div class="modal-overlay" id="bookingModal">
+    <div class="modal-box" style="max-width:480px;">
+        <h4 id="modalTitle">➕ 新建预约</h4>
+        <form id="bookingForm" onsubmit="return saveBooking()">
+            <input type="hidden" id="editId" value="">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <label class="form-label">会员 *</label>
+                    <select class="form-select" id="bMember" required>
+                        <option value="">请选择会员</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">课程类型</label>
+                    <select class="form-select" id="bType">
+                        <option>流瑜伽</option>
+                        <option>哈他瑜伽</option>
+                        <option>阴瑜伽</option>
+                        <option>阿斯汤加</option>
+                        <option>理疗瑜伽</option>
+                        <option>空中瑜伽</option>
+                        <option>普拉提</option>
+                        <option>私教</option>
+                        <option>其他</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">日期 *</label>
+                    <input class="form-control" id="bDate" type="date" required>
+                </div>
+                <div>
+                    <label class="form-label">时间 *</label>
+                    <input class="form-control" id="bTime" type="time" value="09:00" required>
+                </div>
+                <div>
+                    <label class="form-label">老师</label>
+                    <select class="form-select" id="bCoach">
+                        <option>杨老师</option>
+                        <option>林老师</option>
+                        <option>陈老师</option>
+                        <option>黄老师</option>
+                        <option>唐老师</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="bStatus">
+                        <option value="booked">已预约</option>
+                        <option value="attended">已上课</option>
+                        <option value="cancelled">已取消</option>
+                        <option value="noshow">爽约</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <label class="form-label">备注</label>
+                <input class="form-control" id="bNotes" placeholder="可选">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('bookingModal')">取消</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">确认预约</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var currentPage = 1;
+
+// 加载会员列表（用于下拉选择）
+function loadMembers() {
+    fetch('/api/members/all')
+        .then(function(r){ return r.json(); })
+        .then(function(members){
+            var sel = document.getElementById('bMember');
+            sel.innerHTML = '<option value="">请选择会员</option>';
+            members.forEach(function(m){
+                if (m.remaining_classes > 0) {
+                    sel.innerHTML += '<option value="' + m.id + '">' + escHtml(m.name) + 
+                        ' (' + escHtml(m.card_type) + ', 余' + m.remaining_classes + '节)</option>';
+                }
+            });
+        });
+}
+
+// 加载预约列表
+function loadBookings(page) {
+    if (!page) page = 1;
+    currentPage = page;
+    
+    var date = document.getElementById('filterDate').value;
+    var status = document.getElementById('filterStatus').value;
+    
+    var url = '/api/bookings?page=' + page;
+    if (date) url += '&date=' + date;
+    if (status) url += '&status=' + status;
+    
+    fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            document.getElementById('totalCount').textContent = '共 ' + d.total + ' 条预约';
+            renderBookingList(d.bookings);
+            renderPagination('bookingPagination', d.total, d.page, d.per_page, loadBookings);
+        });
+}
+
+function renderBookingList(bookings) {
+    var container = document.getElementById('bookingList');
+    
+    if (bookings.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#999;">暂无预约记录</div>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    bookings.forEach(function(b){
+        var statusMap = {
+            booked: { text: '已预约', class: 'badge-primary' },
+            attended: { text: '已上课', class: 'badge-success' },
+            cancelled: { text: '已取消', class: 'badge-warning' },
+            noshow: { text: '爽约', class: 'badge-danger' }
+        };
+        var status = statusMap[b.status] || { text: b.status, class: 'badge-secondary' };
+        
+        var dateObj = new Date(b.class_date);
+        var dayOfWeek = ['日','一','二','三','四','五','六'][dateObj.getDay()];
+        var dateDisplay = b.class_date + ' (周' + dayOfWeek + ') ' + (b.class_time || '');
+        
+        var card = document.createElement('div');
+        card.className = 'booking-card';
+        card.innerHTML = '<div class="booking-header">' +
+            '<span class="member-name">👤 ' + escHtml(b.member_name || '-') + '</span>' +
+            '<span class="badge ' + status.class + '">' + status.text + '</span>' +
+        '</div>' +
+        '<div class="booking-body">' +
+            '<div class="booking-info">' +
+                '<span class="info-item"><i class="bi bi-calendar"></i> ' + dateDisplay + '</span>' +
+                '<span class="info-item"><i class="bi bi-tag"></i> ' + escHtml(b.class_type || '未分类') + '</span>' +
+                '<span class="info-item"><i class="bi bi-person"></i> ' + escHtml(b.coach || '-') + '</span>' +
+            '</div>' +
+            '<div class="booking-notes">' + escHtml(b.notes || '无备注') + '</div>' +
+        '</div>' +
+        '<div class="booking-actions">' +
+            '<button class="btn btn-sm btn-outline" onclick="openEditBookingModal(' + b.id + ')">编辑</button>' +
+            (b.status === 'booked' ? 
+                '<button class="btn btn-sm btn-success" onclick="markAttended(' + b.id + ')">签到</button>' +
+                '<button class="btn btn-sm btn-warning" onclick="cancelBooking(' + b.id + ')">取消</button>' 
+                : '') +
+            '<button class="btn btn-sm btn-danger" onclick="deleteBooking(' + b.id + ')">删除</button>' +
+        '</div>';
+        
+        container.appendChild(card);
+    });
+}
+
+// 打开新建预约模态框
+function openAddBookingModal() {
+    document.getElementById('modalTitle').textContent = '➕ 新建预约';
+    document.getElementById('editId').value = '';
+    document.getElementById('bookingForm').reset();
+    document.getElementById('bDate').value = new Date().toISOString().slice(0,10);
+    document.getElementById('bTime').value = '09:00';
+    document.getElementById('bStatus').value = 'booked';
+    loadMembers();
+    document.getElementById('bookingModal').classList.add('show');
+}
+
+// 打开编辑预约模态框
+function openEditBookingModal(id) {
+    document.getElementById('modalTitle').textContent = '✏️ 编辑预约';
+    document.getElementById('editId').value = id;
+    loadMembers();
+    
+    fetch('/api/bookings/' + id)
+        .then(function(r){ return r.json(); })
+        .then(function(b){
+            setTimeout(function(){
+                document.getElementById('bMember').value = b.member_id;
+                document.getElementById('bType').value = b.class_type || '流瑜伽';
+                document.getElementById('bDate').value = b.class_date;
+                document.getElementById('bTime').value = b.class_time || '09:00';
+                document.getElementById('bCoach').value = b.coach || '杨老师';
+                document.getElementById('bStatus').value = b.status || 'booked';
+                document.getElementById('bNotes').value = b.notes || '';
+            }, 200);
+        });
+    
+    document.getElementById('bookingModal').classList.add('show');
+}
+
+// 保存预约
+function saveBooking() {
+    var id = document.getElementById('editId').value;
+    var data = {
+        member_id: parseInt(document.getElementById('bMember').value),
+        class_type: document.getElementById('bType').value,
+        class_date: document.getElementById('bDate').value,
+        class_time: document.getElementById('bTime').value,
+        coach: document.getElementById('bCoach').value,
+        status: document.getElementById('bStatus').value,
+        notes: document.getElementById('bNotes').value
+    };
+    
+    var url = '/api/bookings';
+    var method = 'POST';
+    
+    if (id) {
+        url += '/' + id;
+        method = 'PUT';
+    }
+    
+    document.getElementById('saveBtn').disabled = true;
+    
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast(id ? '预约已更新' : '预约创建成功', 'success');
+            closeModal('bookingModal');
+            loadBookings(currentPage);
+        } else {
+            showToast(d.error || '操作失败', 'error');
+        }
+        document.getElementById('saveBtn').disabled = false;
+    });
+    return false;
+}
+
+// 签到（标记已上课）
+function markAttended(id) {
+    if (!confirm('确认签到？将自动扣减会员课时并生成上课记录。')) return;
+    
+    fetch('/api/bookings/' + id + '/attend', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('签到成功，已扣减课时', 'success');
+            loadBookings(currentPage);
+        } else {
+            showToast(d.error || '签到失败', 'error');
+        }
+    });
+}
+
+// 取消预约
+function cancelBooking(id) {
+    if (!confirm('确认取消预约？')) return;
+    
+    fetch('/api/bookings/' + id, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ status: 'cancelled' })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('预约已取消', 'success');
+            loadBookings(currentPage);
+        }
+    });
+}
+
+// 删除预约
+function deleteBooking(id) {
+    if (!confirm('确定删除这条预约记录吗？')) return;
+    
+    fetch('/api/bookings/' + id, {
+        method: 'DELETE'
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('预约已删除', 'success');
+            loadBookings(currentPage);
+        }
+    });
+}
+
+function bookingPaginationPage(p) { loadBookings(p); }
+
+// 初始化
+loadBookings();
+</script>
+
+<style>
+.booking-container {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.filter-bar {
+    background: #fff;
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-group label {
+    font-size: 13px;
+    color: #666;
+}
+
+.filter-bar .form-control,
+.filter-bar .form-select {
+    width: auto;
+    min-width: 140px;
+}
+
+.booking-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.booking-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid #e8ecf0;
+}
+
+.booking-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.member-name {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.booking-body {
+    margin-bottom: 12px;
+}
+
+.booking-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 6px;
+}
+
+.info-item {
+    font-size: 13px;
+    color: #666;
+}
+
+.booking-notes {
+    font-size: 12px;
+    color: #999;
+}
+
+.booking-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+}
+
+@media (max-width: 768px) {
+    .filter-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .booking-info {
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .booking-actions {
+        flex-wrap: wrap;
+    }
+}
+</style>
+{% endblock %}

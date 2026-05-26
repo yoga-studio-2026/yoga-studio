@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+{% block title %}会员管理 - 瑜伽馆管理系统{% endblock %}
+{% block page_title %}👥 会员管理{% endblock %}
+{% block page_actions %}<button class="btn btn-primary btn-sm" onclick="openAddModal()">+ 添加会员</button>&nbsp;&nbsp;<button class="btn btn-sm btn-outline" onclick="refreshMembers()" title="刷新">🔄</button>{% endblock %}
+
+{% set active_page = 'members' %}
+
+{% block content %}
+
+<div class="table-container">
+    <div class="table-header">
+        <div class="search-box">
+            <input class="form-control" id="searchInput" placeholder="搜索姓名/手机号..." oninput="loadMembers(1)">
+            <select class="form-select" id="statusFilter" onchange="loadMembers(1)">
+                <option value="">全部状态</option>
+                <option value="active">活跃</option>
+                <option value="expired">已过期</option>
+                <option value="frozen">冻结</option>
+            </select>
+        </div>
+        <span style="font-size:13px;color:#999;" id="totalCount"></span>
+    </div>
+    <div class="table-body">
+        <table>
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>手机号</th>
+                    <th>卡项</th>
+                    <th>购卡金额</th>
+                    <th>单价</th>
+                    <th>总课时</th>
+                    <th>已上课时</th>
+                    <th>剩余课时</th>
+                    <th>剩余金额</th>
+                    <th>续费次数</th>
+                    <th>续费金额</th>
+                    <th>办卡日期</th>
+                    <th>到期日</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="membersBody"></tbody>
+        </table>
+    </div>
+    <div class="pagination" id="membersPagination"></div>
+    <table class="table" style="margin-top:10px;">
+        <tfoot id="membersTotalRow" style="background:#f0fdf4;">
+            <tr>
+                <td colspan="13" style="text-align:center;color:#999;">加载中...</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+<!-- 会员详情 -->
+<div id="memberDetail" style="display:none;"></div>
+
+<!-- 添加/编辑会员模态框 -->
+<div class="modal-overlay" id="memberModal">
+    <div class="modal-box">
+        <h4 id="modalTitle">添加会员</h4>
+        <form id="memberForm" onsubmit="return saveMember()">
+            <input type="hidden" id="editId" value="">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <label class="form-label">姓名 *</label>
+                    <input class="form-control" id="mName" required>
+                </div>
+                <div>
+                    <label class="form-label">手机号</label>
+                    <input class="form-control" id="mPhone">
+                </div>
+                <div>
+                    <label class="form-label">卡项类型</label>
+                    <select class="form-select" id="mCardType">
+                        <option value="">请选择</option>
+                        <option>私教</option>
+                        <option>小班</option>
+                        <option>私教月卡</option>
+                        <option>小班月卡</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">购卡金额 (元)</label>
+                    <input class="form-control" id="mAmount" type="number" step="0.01" min="0" oninput="calcPrice()">
+                </div>
+                <div>
+                    <label class="form-label">总课时</label>
+                    <input class="form-control" id="mTotal" type="number" min="0" oninput="calcPrice(); updateRemaining();">
+                </div>
+                <div>
+                    <label class="form-label">已上课时</label>
+                    <input class="form-control" id="mAttended" type="number" min="0" oninput="updateRemaining()" style="background:#fff3cd;color:#856404;font-weight:600;" title="可手动调整">
+                </div>
+                <div>
+                    <label class="form-label">单节课价格</label>
+                    <input class="form-control" id="mPrice" type="number" step="0.01" readonly style="background:#f5f5f5;">
+                </div>
+                <div>
+                    <label class="form-label">剩余课时</label>
+                    <input class="form-control" id="mRemaining" type="number" readonly style="background:#dcfce7;color:#166534;font-weight:600;" title="总课时 - 已上课时">
+                    <div style="font-size:11px;color:#999;margin-top:4px;">💡 剩余课时 = 总课时 - 已上课时</div>
+                </div>
+                <div>
+                    <label class="form-label">办卡日期</label>
+                    <input class="form-control" id="mSignupDate" type="date" oninput="calcPrice()">
+                </div>
+                <div>
+                    <label class="form-label">到期日期</label>
+                    <input class="form-control" id="mExpiryDate" type="date" readonly style="background:#f5f5f5;" title="每周2节课自动计算">
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <label class="form-label">备注</label>
+                <textarea class="form-control" id="mNotes" rows="2"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('memberModal')">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 续费模态框 -->
+<div class="modal-overlay" id="renewModal">
+    <div class="modal-box">
+        <h4>🔄 续费 - <span id="renewName"></span></h4>
+        <form id="renewForm" onsubmit="return renewMember()">
+            <input type="hidden" id="renewId">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div>
+                    <label class="form-label">卡项类型</label>
+                    <select class="form-select" id="renewCardType">
+                        <option>私教</option>
+                        <option>小班</option>
+                        <option>私教月卡</option>
+                        <option>小班月卡</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">续费金额 (元)</label>
+                    <input class="form-control" id="renewAmount" type="number" step="0.01" min="0" required>
+                </div>
+                <div>
+                    <label class="form-label">新增课时</label>
+                    <input class="form-control" id="renewClasses" type="number" min="0" required>
+                </div>
+                <div>
+                    <label class="form-label">新到期日期</label>
+                    <input class="form-control" id="renewExpiry" type="date">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('renewModal')">取消</button>
+                <button type="submit" class="btn btn-success">确认续费</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var currentPage = 1;
+
+// ===== 剩余课时快速编辑 =====
+function editRemaining(el) {
+    var memberId = el.dataset.id;
+    var currentValue = el.dataset.value;
+    
+    // 创建输入框
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.value = currentValue;
+    input.className = 'inline-edit-input';
+    input.min = '0';
+    input.style.cssText = 'width:50px;text-align:center;font-weight:bold;font-size:14px;padding:2px 4px;border:2px solid #4f46e5;border-radius:4px;';
+    
+    el.innerHTML = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    
+    // 保存函数
+    function saveValue() {
+        var newValue = parseInt(input.value) || 0;
+        if (newValue === parseInt(currentValue)) {
+            el.innerHTML = currentValue;
+            el.dataset.value = currentValue;
+            return;
+        }
+        
+        // 调用API更新
+        fetch('/api/members/' + memberId + '/remaining', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({remaining_classes: newValue})
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                el.innerHTML = newValue;
+                el.dataset.value = newValue;
+                showToast('剩余课时已更新', 'success');
+                loadMembers(currentPage); // 刷新列表
+            } else {
+                el.innerHTML = currentValue;
+                el.dataset.value = currentValue;
+                showToast('更新失败', 'error');
+            }
+        });
+    }
+    
+    input.onblur = saveValue;
+    input.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+            input.blur();
+        } else if (e.key === 'Escape') {
+            el.innerHTML = currentValue;
+            el.dataset.value = currentValue;
+        }
+    };
+}
+
+var REFRESH_INTERVAL = 30; // 秒
+var refreshTimer = null;
+
+function refreshMembers() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    loadMembers(currentPage);
+    refreshTimer = setTimeout(refreshMembers, REFRESH_INTERVAL * 1000);
+}
+
+function loadMembers(page) {
+    currentPage = page;
+    var keyword = document.getElementById('searchInput').value;
+    var status = document.getElementById('statusFilter').value;
+    var url = '/api/members?page=' + page + '&keyword=' + encodeURIComponent(keyword);
+    if (status) url += '&status=' + encodeURIComponent(status);
+
+    fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            var tbody = document.getElementById('membersBody');
+            tbody.innerHTML = '';
+            document.getElementById('totalCount').textContent = '共 ' + d.total + ' 位会员';
+
+            d.members.forEach(function(m){
+                var price = m.price_per_class || 0;
+                var remaining = m.remaining_classes || 0;
+                var attended = m.classes_attended || 0;
+                var total = m.total_classes || 0;
+                var statusClass = 'badge-' + m.status;
+                var statusMap = { active: '活跃', expired: '已过期', frozen: '冻结' };
+
+                tbody.innerHTML += '<tr>' +
+                    '<td><a href="javascript:void(0)" onclick="viewMember(' + m.id + ')" style="color:#4f46e5;text-decoration:none;font-weight:500;">' + escHtml(m.name) + '</a></td>' +
+                    '<td>' + escHtml(m.phone || '-') + '</td>' +
+                    '<td>' + escHtml(m.card_type || '-') + '</td>' +
+                    '<td>¥' + (m.card_amount || 0).toLocaleString() + '</td>' +
+                    '<td>¥' + price + '</td>' +
+                    '<td style="font-weight:600;color:#4f46e5;">' + total + '</td>' +
+                    '<td style="color:#f59e0b;">' + attended + '</td>' +
+                    '<td><strong class="editable-remaining" data-id="' + m.id + '" data-value="' + remaining + '" onclick="editRemaining(this)" style="' + (remaining <= 3 ? 'color:#ef4444;' : 'color:#22c55e;') + '">' + remaining + '</strong></td>' +
+                    '<td style="font-weight:600;color:#10b981;">¥' + (price > 0 ? (remaining * price).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 1}) : '-') + '</td>' +
+                    '<td><strong style="color:#f59e0b;">' + (m.renewal_count || 0) + '</strong></td>' +
+                    '<td style="color:#f59e0b;font-weight:600;">¥' + ((m.renewal_amount || 0) > 0 ? (m.renewal_amount).toLocaleString() : '-') + '</td>' +
+                    '<td>' + (m.signup_date || '-') + '</td>' +
+                    '<td>' + (m.expiry_date || '-') + '</td>' +
+                    '<td><span class="badge ' + statusClass + '">' + (statusMap[m.status] || m.status) + '</span></td>' +
+                    '<td style="white-space:nowrap;">' +
+                        '<button class="btn btn-sm btn-outline" onclick="openEditModal(' + m.id + ')">编辑</button> ' +
+                        '<button class="btn btn-sm btn-success" onclick="openRenewModal(' + m.id + ')">续费</button> ' +
+                        '<button class="btn btn-sm btn-danger" onclick="deleteMember(' + m.id + ')">删除</button>' +
+                    '</td></tr>';
+            });
+
+            renderPagination('membersPagination', d.total, d.page, d.per_page, loadMembers);
+            
+            // 添加剩余金额总计
+            var totalRow = document.getElementById('membersTotalRow');
+            if (totalRow) {
+                var remaining = d.total_remaining || 0;
+                var cardTotal = d.total_card_amount || 0;
+                totalRow.innerHTML = '<td colspan="11" style="text-align:right;font-weight:600;font-size:14px;">💰 当前页 剩余金额合计：<span style="color:#10b981;font-size:16px;font-weight:700;">¥' + remaining.toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0}) + '</span>　　购卡金额合计：<span style="color:#2563eb;font-size:16px;font-weight:700;">¥' + cardTotal.toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0}) + '</span></td><td></td><td></td>';
+            }
+        });
+}
+
+function viewMember(id) {
+    fetch('/api/members/' + id)
+        .then(function(r){ return r.json(); })
+        .then(function(m){
+            var html = '<div class="detail-panel">' +
+                '<h5>📋 ' + escHtml(m.name) + ' - 详细信息</h5>' +
+                '<div class="detail-grid">' +
+                    '<div class="item"><span class="label">姓名：</span>' + escHtml(m.name) + '</div>' +
+                    '<div class="item"><span class="label">手机号：</span>' + escHtml(m.phone || '-') + '</div>' +
+                    '<div class="item"><span class="label">卡项：</span>' + escHtml(m.card_type || '-') + '</div>' +
+                    '<div class="item"><span class="label">购卡金额：</span>¥' + (m.card_amount || 0).toLocaleString() + '</div>' +
+                    '<div class="item"><span class="label">单价：</span>¥' + (m.price_per_class || 0) + '</div>' +
+                    '<div class="item"><span class="label">已上课时：</span>' + (m.classes_attended || 0) + '</div>' +
+                    '<div class="item"><span class="label">剩余课时：</span>' + (m.remaining_classes || 0) + '</div>' +
+                    '<div class="item"><span class="label">剩余金额：</span><strong style="color:#10b981;">¥' + ((m.price_per_class || 0) > 0 ? ((m.remaining_classes || 0) * (m.price_per_class || 0)).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 1}) : '-') + '</strong></div>' +
+                    '<div class="item"><span class="label">办卡日期：</span>' + (m.signup_date || '-') + '</div>' +
+                    '<div class="item"><span class="label">到期日期：</span>' + (m.expiry_date || '-') + '</div>' +
+                    '<div class="item"><span class="label">备注：</span>' + escHtml(m.notes || '-') + '</div>' +
+                '</div></div>';
+
+            // 上课历史
+            fetch('/api/members/' + id + '/history')
+                .then(function(r){ return r.json(); })
+                .then(function(history){
+                    if (history.length > 0) {
+                        html += '<div class="detail-panel"><h5>📅 上课记录</h5><table style="width:100%;font-size:13px;">' +
+                            '<thead><tr><th>日期</th><th>课程类型</th><th>老师</th></tr></thead><tbody>';
+                        history.forEach(function(h){
+                            html += '<tr><td>' + h.date + '</td><td>' + escHtml(h.class_type) + '</td><td>' + escHtml(h.coach) + '</td></tr>';
+                        });
+                        html += '</tbody></table></div>';
+                    }
+                    document.getElementById('memberDetail').innerHTML = html;
+                    document.getElementById('memberDetail').style.display = 'block';
+                    document.getElementById('memberDetail').scrollIntoView({ behavior: 'smooth' });
+                });
+        });
+}
+
+function openAddModal() {
+    document.getElementById('modalTitle').textContent = '➕ 添加会员';
+    document.getElementById('editId').value = '';
+    document.getElementById('memberForm').reset();
+    document.getElementById('mPrice').value = '';
+    document.getElementById('mAttended').value = '0';
+    document.getElementById('mRemaining').value = '';
+    document.getElementById('mSignupDate').value = new Date().toISOString().slice(0,10);
+    document.getElementById('memberModal').classList.add('show');
+}
+
+function openEditModal(id) {
+    document.getElementById('modalTitle').textContent = '✏️ 编辑会员';
+    document.getElementById('editId').value = id;
+    fetch('/api/members/' + id)
+        .then(function(r){ return r.json(); })
+        .then(function(m){
+            document.getElementById('mName').value = m.name;
+            document.getElementById('mPhone').value = m.phone || '';
+            document.getElementById('mCardType').value = m.card_type || '';
+            document.getElementById('mAmount').value = m.card_amount || 0;
+            document.getElementById('mTotal').value = m.total_classes || 0;
+            document.getElementById('mAttended').value = m.classes_attended || 0;
+            document.getElementById('mPrice').value = m.price_per_class || 0;
+            document.getElementById('mSignupDate').value = m.signup_date || '';
+            document.getElementById('mExpiryDate').value = m.expiry_date || '';
+            document.getElementById('mNotes').value = m.notes || '';
+            updateRemaining();
+            document.getElementById('memberModal').classList.add('show');
+        });
+}
+
+function saveMember() {
+    var id = document.getElementById('editId').value;
+    var data = {
+        name: document.getElementById('mName').value,
+        phone: document.getElementById('mPhone').value,
+        card_type: document.getElementById('mCardType').value,
+        card_amount: parseFloat(document.getElementById('mAmount').value) || 0,
+        total_classes: parseInt(document.getElementById('mTotal').value) || 0,
+        signup_date: document.getElementById('mSignupDate').value,
+        expiry_date: document.getElementById('mExpiryDate').value,
+        notes: document.getElementById('mNotes').value
+    };
+
+    var url = '/api/members';
+    var method = 'POST';
+    if (id) {
+        url += '/' + id;
+        method = 'PUT';
+        // 编辑时发送实际的已上课时值
+        data.classes_attended = parseInt(document.getElementById('mAttended').value) || 0;
+    }
+
+    fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                showToast(id ? '会员信息已更新' : '会员添加成功');
+                closeModal('memberModal');
+                loadMembers(currentPage);
+            } else {
+                showToast(d.error || '操作失败', 'error');
+            }
+        });
+    return false;
+}
+
+function deleteMember(id) {
+    if (!confirm('确定删除该会员吗？此操作不可恢复！')) return;
+    fetch('/api/members/' + id, { method: 'DELETE' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                showToast('会员已删除');
+                loadMembers(currentPage);
+            } else {
+                showToast(d.error || '删除失败', 'error');
+            }
+        });
+}
+
+function openRenewModal(id) {
+    fetch('/api/members/' + id)
+        .then(function(r){ return r.json(); })
+        .then(function(m){
+            document.getElementById('renewId').value = id;
+            document.getElementById('renewName').textContent = m.name;
+            document.getElementById('renewAmount').value = '';
+            document.getElementById('renewClasses').value = '';
+            document.getElementById('renewExpiry').value = '';
+            document.getElementById('renewModal').classList.add('show');
+        });
+}
+
+function renewMember() {
+    var id = document.getElementById('renewId').value;
+    var amount = parseFloat(document.getElementById('renewAmount').value) || 0;
+    var classes = parseInt(document.getElementById('renewClasses').value) || 0;
+    var expiry = document.getElementById('renewExpiry').value;
+
+    fetch('/api/members/' + id)
+        .then(function(r){ return r.json(); })
+        .then(function(m){
+            var newTotal = (m.total_classes || 0) + classes;
+            var newAmount = (m.card_amount || 0) + amount;
+            var price = newTotal > 0 ? Math.round((newAmount / newTotal) * 10) / 10 : 0;
+
+            var data = {
+                name: m.name,
+                phone: m.phone || '',
+                card_type: document.getElementById('renewCardType').value,
+                card_amount: newAmount,
+                total_classes: newTotal,
+                price_per_class: price,
+                classes_attended: m.classes_attended || 0,
+                signup_date: m.signup_date || '',
+                expiry_date: expiry || m.expiry_date || '',
+                notes: m.notes || '',
+                status: 'active'
+            };
+
+            fetch('/api/members/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) })
+                .then(function(r){ return r.json(); })
+                .then(function(d){
+                    if (d.success) {
+                        // 自动生成续费交易记录
+                        if (amount > 0) {
+                            fetch('/api/transactions', {
+                                method: 'POST',
+                                headers: {'Content-Type':'application/json'},
+                                body: JSON.stringify({
+                                    date: new Date().toISOString().slice(0,10),
+                                    type: 'income',
+                                    category: '续费收入',
+                                    amount: amount,
+                                    notes: m.name + '续费-' + data.card_type
+                                })
+                            });
+                        }
+                        showToast('续费成功');
+                        closeModal('renewModal');
+                        loadMembers(currentPage);
+                    }
+                });
+        });
+    return false;
+}
+
+function calcPrice() {
+    var amount = parseFloat(document.getElementById('mAmount').value) || 0;
+    var total = parseInt(document.getElementById('mTotal').value) || 0;
+    document.getElementById('mPrice').value = total > 0 ? (amount / total).toFixed(1) : 0;
+    updateRemaining();
+    // 自动计算到期日期：每周2节课
+    var signup = document.getElementById('mSignupDate').value;
+    if (signup && total > 0) {
+        var weeks = total / 2;
+        var d = new Date(signup);
+        d.setDate(d.getDate() + weeks * 7);
+        document.getElementById('mExpiryDate').value = d.toISOString().split('T')[0];
+    }
+}
+
+function updateRemaining() {
+    var total = parseInt(document.getElementById('mTotal').value) || 0;
+    var attended = parseInt(document.getElementById('mAttended').value) || 0;
+    var remaining = Math.max(0, total - attended);
+    document.getElementById('mRemaining').value = remaining;
+}
+
+function membersPaginationPage(p) { loadMembers(p); }
+
+loadMembers(1);
+refreshMembers();
+</script>
+<style>
+/* 剩余课时可编辑样式 */
+.editable-remaining {
+    cursor: pointer;
+    color: #4f46e5;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+.editable-remaining:hover {
+    background: #e8ecff;
+    text-decoration: underline;
+}
+.editable-remaining::after {
+    content: ' ✏️';
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.editable-remaining:hover::after {
+    opacity: 1;
+}
+</style>
+{% endblock %}

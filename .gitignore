@@ -1,0 +1,46 @@
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# PyInstaller
+*.spec
+*.manifest
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 日志和缓存
+*.log
+.cache/
+
+# 标志文件
+.seeded
+
+# 打包产物
+*.icns
+icon.iconset/

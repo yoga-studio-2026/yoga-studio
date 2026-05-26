@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}数据看板 - 瑜伽馆管理系统{% endblock %}
+{% block page_title %}📊 数据看板{% endblock %}
+{% block page_actions %}<span id="updateTime"></span>&nbsp;&nbsp;<span id="refreshCountdown" style="color:#888;font-size:12px;"></span>&nbsp;&nbsp;<button class="btn btn-sm btn-outline" onclick="refreshDashboard()" title="刷新" style="padding:4px 8px;">🔄</button>{% endblock %}
+
+{% set active_page = 'dashboard' %}
+
+{% block content %}
+
+<!-- 瑜伽馆评级 -->
+<div class="stat-card" id="studioClassCard" style="grid-column:1/-1;text-align:center;margin-bottom:16px;padding:16px;border:2px solid #22c55e;background:#f0fdf4;">
+    <div class="label" style="font-size:16px;">🏷️ 瑜伽馆评级</div>
+    <div class="value" id="statStudioClass" style="font-size:32px;font-weight:bold;color:#16a34a;">--</div>
+</div>
+
+<!-- 三维度评估 -->
+<div class="stat-card" id="dimensionCard" style="grid-column:1/-1;margin-bottom:16px;padding:16px;border:2px solid #3b82f6;background:#eff6ff;">
+    <div class="label" style="font-size:16px;">📊 三维度评估</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:12px;">
+        <div style="text-align:center;">
+            <div style="font-size:13px;color:#666;margin-bottom:8px;">① 现金流 vs 负债</div>
+            <div id="dim1Class" style="font-size:28px;font-weight:bold;">--</div>
+            <div style="font-size:11px;color:#999;margin-top:4px;">A=安全 B=风险</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:13px;color:#666;margin-bottom:8px;">② 现金流 vs 月均成本</div>
+            <div id="dim2Class" style="font-size:28px;font-weight:bold;">--</div>
+            <div style="font-size:11px;color:#999;margin-top:4px;">A=≥6倍 B=3-6倍 C=<3倍</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:13px;color:#666;margin-bottom:8px;">③ 业绩/消卡/成本</div>
+            <div id="dim3Class" style="font-size:28px;font-weight:bold;">--</div>
+            <div style="font-size:11px;color:#999;margin-top:4px;">A=最优 F=最差</div>
+        </div>
+    </div>
+</div>
+
+<!-- 核心指标卡片 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;">
+    <div class="stat-card">
+        <div class="label">本月业绩</div>
+        <div class="value income" id="statIncome">--</div>
+        <div class="sub">现金入账</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">本月成本</div>
+        <div class="value expense" id="statCost">--</div>
+        <div class="sub">当月所有支出合计</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">本月消卡</div>
+        <div class="value" id="statCard" style="color:#8b5cf6;">--</div>
+        <div class="sub">上课消耗课时价值</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">利润 (消卡-成本)</div>
+        <div class="value profit" id="statProfit">--</div>
+        <div class="sub">实际经营利润</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">新增现金流 (业绩-成本)</div>
+        <div class="value" id="statNetCashFlow" style="color:#f59e0b;">--</div>
+        <div class="sub">当月现金盈亏</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">新增负债 (业绩-消卡)</div>
+        <div class="value liability" id="statNetDebt">--</div>
+        <div class="sub">当月负债变化</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">现金流 (初始+新增)</div>
+        <div class="value" id="statCashBalance" style="color:#2563eb;">--</div>
+        <div class="sub">累计现金余额</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">负债 (未消课时)</div>
+        <div class="value liability" id="statLiability">--</div>
+        <div class="sub">未消耗课时总值</div>
+    </div>
+</div>
+
+<!-- 成本明细 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:24px;">
+    <div class="stat-card" style="background:#fef2f2;">
+        <div class="label">房租</div>
+        <div class="value" id="costRent" style="color:#dc2626;">--</div>
+    </div>
+    <div class="stat-card" style="background:#fef9c3;">
+        <div class="label">工资</div>
+        <div class="value" id="costSalary" style="color:#ca8a04;">--</div>
+    </div>
+    <div class="stat-card" style="background:#f0fdf4;">
+        <div class="label">水电煤</div>
+        <div class="value" id="costUtility" style="color:#16a34a;">--</div>
+    </div>
+    <div class="stat-card" style="background:#f5f3ff;">
+        <div class="label">其他</div>
+        <div class="value" id="costOther" style="color:#7c3aed;">--</div>
+    </div>
+</div>
+
+<!-- 会员 & 上课统计 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;">
+    <div class="stat-card">
+        <div class="label">活跃会员</div>
+        <div class="value" id="statMembers" style="color:#8b5cf6;">--</div>
+        <div class="sub">当前有效会员数</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">本月上课人次</div>
+        <div class="value" id="statAttendCount" style="color:#f59e0b;">--</div>
+        <div class="sub">本月实际到课</div>
+    </div>
+</div>
+
+<!-- 图表区 -->
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px;">
+    <div class="chart-container">
+        <h5>📈 月度趋势 (业绩/成本/消卡)</h5>
+        <canvas id="trendChart" height="250"></canvas>
+    </div>
+    <div class="chart-container">
+        <h5>🧘 会员卡类型分布</h5>
+        <canvas id="cardChart" height="250"></canvas>
+    </div>
+</div>
+
+<div class="chart-container" style="margin-bottom:24px;">
+    <h5>💹 月度利润/现金流/负债趋势</h5>
+    <canvas id="profitTrendChart" height="200"></canvas>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var trendChartInstance = null;
+var cardChartInstance = null;
+var profitTrendInstance = null;
+
+var REFRESH_INTERVAL = 15; // 秒
+var refreshTimer = null;
+var countdownTimer = null;
+var secondsLeft = REFRESH_INTERVAL;
+
+function refreshDashboard() {
+    secondsLeft = REFRESH_INTERVAL;
+    loadDashboard();
+}
+
+function startAutoRefresh() {
+    // 清除已有定时器
+    if (refreshTimer) clearInterval(refreshTimer);
+    if (countdownTimer) clearInterval(countdownTimer);
+    
+    // 启动定时刷新
+    refreshTimer = setInterval(function(){
+        refreshDashboard();
+    }, REFRESH_INTERVAL * 1000);
+    
+    // 启动倒计时显示
+    countdownTimer = setInterval(function(){
+        secondsLeft--;
+        if (secondsLeft <= 0) secondsLeft = REFRESH_INTERVAL;
+        var el = document.getElementById('refreshCountdown');
+        if (el) el.textContent = secondsLeft + 's后刷新';
+    }, 1000);
+}
+
+function loadDashboard() {
+    fetch('/api/dashboard')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            document.getElementById('updateTime').textContent = new Date().toLocaleString('zh-CN');
+
+            // 核心指标
+            document.getElementById('statIncome').textContent = '¥' + (d.month_income || 0).toLocaleString();
+            document.getElementById('statCost').textContent = '¥' + (d.month_cost || 0).toLocaleString();
+            document.getElementById('statCard').textContent = '¥' + (d.card_consumption || 0).toLocaleString();
+            document.getElementById('statProfit').textContent = '¥' + (d.profit || 0).toLocaleString();
+            document.getElementById('statNetCashFlow').textContent = '¥' + (d.net_cash_flow || 0).toLocaleString();
+            document.getElementById('statNetDebt').textContent = '¥' + (d.net_debt || 0).toLocaleString();
+            document.getElementById('statCashBalance').textContent = '¥' + (d.cash_balance || 0).toLocaleString();
+            document.getElementById('statLiability').textContent = '¥' + (d.liability || 0).toLocaleString();
+
+            // 成本明细
+            var cd = d.cost_detail || {};
+            document.getElementById('costRent').textContent = '¥' + (cd['房租'] || 0).toLocaleString();
+            document.getElementById('costSalary').textContent = '¥' + (cd['工资'] || 0).toLocaleString();
+            document.getElementById('costUtility').textContent = '¥' + (cd['水电煤'] || 0).toLocaleString();
+            document.getElementById('costOther').textContent = '¥' + (cd['其他'] || 0).toLocaleString();
+
+            // 会员 & 上课
+            document.getElementById('statMembers').textContent = d.active_members + ' 人';
+            document.getElementById('statAttendCount').textContent = (d.attend_count || 0) + ' 人次';
+
+            // 瑜伽馆评级
+            var sc = d.studio_class || 'B';
+            var scEl = document.getElementById('statStudioClass');
+            var scCard = document.getElementById('studioClassCard');
+            scEl.textContent = sc + ' 类瑜伽馆';
+            if (sc === 'A') {
+                scEl.style.color = '#16a34a';
+                scCard.style.background = '#f0fdf4';
+                scCard.style.borderColor = '#22c55e';
+            } else {
+                scEl.style.color = '#dc2626';
+                scCard.style.background = '#fef2f2';
+                scCard.style.borderColor = '#ef4444';
+            }
+
+            // 三维度评估
+            var dim1 = d.dimension1_class || 'B';
+            var dim2 = d.dimension2_class || 'C';
+            var dim3 = d.dimension3_class || 'A';
+            
+            var dim1El = document.getElementById('dim1Class');
+            var dim2El = document.getElementById('dim2Class');
+            var dim3El = document.getElementById('dim3Class');
+            
+            dim1El.textContent = dim1 + ' 类';
+            dim2El.textContent = dim2 + ' 类';
+            dim3El.textContent = dim3 + ' 类';
+            
+            // 第一维度颜色
+            dim1El.style.color = dim1 === 'A' ? '#16a34a' : '#dc2626';
+            
+            // 第二维度颜色（A=绿，B=黄，C=红）
+            if (dim2 === 'A') dim2El.style.color = '#16a34a';
+            else if (dim2 === 'B') dim2El.style.color = '#f59e0b';
+            else dim2El.style.color = '#dc2626';
+            
+            // 第三维度颜色（A=绿，F=红，中间渐变）
+            var dim3Colors = {'A':'#16a34a','B':'#22c55e','C':'#84cc16','D':'#f59e0b','E':'#ef4444','F':'#dc2626'};
+            dim3El.style.color = dim3Colors[dim3] || '#666';
+
+            renderTrend(d.trend);
+            renderCardDist(d.card_distribution);
+            renderProfitTrend(d.trend);
+        });
+}
+
+function renderTrend(data) {
+    var ctx = document.getElementById('trendChart').getContext('2d');
+    if (trendChartInstance) trendChartInstance.destroy();
+
+    trendChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(function(d){ return d.month; }),
+            datasets: [
+                { label: '业绩', data: data.map(function(d){ return d.income || 0; }), backgroundColor: 'rgba(34,197,94,0.7)', borderRadius: 4 },
+                { label: '成本', data: data.map(function(d){ return d.cost || 0; }), backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 4 },
+                { label: '消卡', data: data.map(function(d){ return d.card || 0; }), backgroundColor: 'rgba(139,92,246,0.7)', borderRadius: 4 }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 10 } } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: '金额 (元)' }, ticks: { callback: function(v){ return '¥' + v; } } } }
+        }
+    });
+}
+
+function renderCardDist(data) {
+    var colors = ['#4f46e5', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+    var ctx = document.getElementById('cardChart').getContext('2d');
+    if (cardChartInstance) cardChartInstance.destroy();
+
+    cardChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(function(d){ return d.label; }),
+            datasets: [{
+                data: data.map(function(d){ return d.count; }),
+                backgroundColor: data.map(function(_,i){ return colors[i % colors.length]; })
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } }
+        }
+    });
+}
+
+function renderProfitTrend(data) {
+    var ctx = document.getElementById('profitTrendChart').getContext('2d');
+    if (profitTrendInstance) profitTrendInstance.destroy();
+
+    profitTrendInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(function(d){ return d.month; }),
+            datasets: [
+                { label: '利润 (消卡-成本)', data: data.map(function(d){ return d.profit || 0; }), borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.3, pointBackgroundColor: '#22c55e', borderWidth: 2 },
+                { label: '现金流 (业绩-成本)', data: data.map(function(d){ return d.cash_flow || 0; }), borderColor: '#f59e0b', backgroundColor: 'transparent', tension: 0.3, pointBackgroundColor: '#f59e0b', borderWidth: 2 },
+                { label: '消卡', data: data.map(function(d){ return d.card || 0; }), borderColor: '#8b5cf6', backgroundColor: 'transparent', tension: 0.3, pointBackgroundColor: '#8b5cf6', borderWidth: 2, borderDash: [5,5] }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 10 } } },
+            scales: { y: { title: { display: true, text: '金额 (元)' }, ticks: { callback: function(v){ return '¥' + v; } } } }
+        }
+    });
+}
+
+startAutoRefresh();
+</script>
+{% endblock %}

@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+{% block title %}财务管理 - 瑜伽馆管理系统{% endblock %}
+{% block page_title %}💰 财务管理{% endblock %}
+{% block page_actions %}<button class="btn btn-primary btn-sm" onclick="openAddTransactionModal()">+ 记一笔</button>&nbsp;&nbsp;<button class="btn btn-sm btn-outline" onclick="refreshFinance()" title="刷新">🔄</button>{% endblock %}
+
+{% set active_page = 'finance' %}
+
+{% block content %}
+
+<!-- 月度汇总卡片 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;">
+    <div class="stat-card">
+        <div class="label">本月业绩</div>
+        <div class="value income" id="summaryIncome">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">本月成本</div>
+        <div class="value expense" id="summaryExpense">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">本月消卡</div>
+        <div class="value" id="summaryCardConsume" style="color:#8b5cf6;">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">利润 (消卡-成本)</div>
+        <div class="value profit" id="summaryProfit">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">新增现金流 (业绩-成本)</div>
+        <div class="value" id="summaryNetCashFlow" style="color:#f59e0b;">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">新增负债 (业绩-消卡)</div>
+        <div class="value liability" id="summaryNetDebt">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">现金流 = 初始金额 + 新增现金流</div>
+        <div class="value" id="summaryCashBalance" style="color:#2563eb;">--</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">负债 (未消课时)</div>
+        <div class="value liability" id="summaryLiability">--</div>
+    </div>
+</div>
+
+<!-- 初始现金流可编辑卡片 -->
+<div class="stat-card" style="grid-column:1/-1;background:#eff6ff;border:2px solid #3b82f6;text-align:center;position:relative;">
+    <div class="label" style="font-size:14px;">💰 初始现金流</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <div class="value" id="summaryInitialCashFlow" style="font-size:24px;font-weight:bold;color:#2563eb;">¥0</div>
+        <button class="btn btn-sm btn-outline" style="padding:2px 8px;font-size:12px;" onclick="openInitCashModal()" title="编辑初始现金流">✏️</button>
+    </div>
+</div>
+
+<!-- 瑜伽馆分类 -->
+<div class="stat-card" style="grid-column:1/-1;background:#f0fdf4;border:2px solid #22c55e;text-align:center;">
+    <div class="label" style="font-size:14px;">🏷️ 瑜伽馆评级</div>
+    <div class="value" id="summaryStudioClass" style="font-size:28px;font-weight:bold;color:#16a34a;">--</div>
+</div>
+
+<!-- 成本明细卡片 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px;">
+    <div class="stat-card" style="background:#fef2f2;">
+        <div class="label">房租</div>
+        <div class="value" id="costRent" style="color:#dc2626;">--</div>
+    </div>
+    <div class="stat-card" style="background:#fef9c3;">
+        <div class="label">工资</div>
+        <div class="value" id="costSalary" style="color:#ca8a04;">--</div>
+    </div>
+    <div class="stat-card" style="background:#f0fdf4;">
+        <div class="label">水电煤</div>
+        <div class="value" id="costUtility" style="color:#16a34a;">--</div>
+    </div>
+    <div class="stat-card" style="background:#f5f3ff;">
+        <div class="label">其他</div>
+        <div class="value" id="costOther" style="color:#7c3aed;">--</div>
+    </div>
+</div>
+
+<!-- 月度趋势图 -->
+<div class="chart-container" style="margin-bottom:20px;">
+    <h5>📊 月度收支趋势</h5>
+    <canvas id="financeTrendChart" height="200"></canvas>
+</div>
+
+<!-- 交易流水 -->
+<div class="table-container">
+    <div class="table-header">
+        <div class="filter-bar">
+            <select class="form-select" id="typeFilter" onchange="loadTransactions(1)">
+                <option value="">全部类型</option>
+                <option value="income">收入</option>
+                <option value="expense">支出</option>
+            </select>
+            <input class="form-control" type="month" id="monthFilter" onchange="loadTransactions(1)">
+        </div>
+        <span style="font-size:13px;color:#999;" id="totalCount"></span>
+    </div>
+    <div class="table-body">
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>类型</th>
+                    <th>分类</th>
+                    <th>会员</th>
+                    <th>金额</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="transactionsBody"></tbody>
+        </table>
+    </div>
+    <div class="pagination" id="transactionsPagination"></div>
+</div>
+
+<!-- 编辑初始现金流模态框 -->
+<div class="modal-overlay" id="initCashModal">
+    <div class="modal-box" style="max-width:400px;">
+        <h4>💰 设置初始现金流</h4>
+        <p style="font-size:13px;color:#666;margin-bottom:14px;">初始现金流用于校正开业前的资金余额。设置后，所有现金流相关指标会自动加上此值。</p>
+        <div style="margin-top:12px;">
+            <label class="form-label">初始现金流 (元)</label>
+            <input class="form-control" id="initCashInput" type="number" step="0.01" style="font-size:18px;padding:8px 12px;">
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" onclick="closeModal('initCashModal')">取消</button>
+            <button type="button" class="btn btn-primary" onclick="saveInitCash()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 添加交易模态框 -->
+<div class="modal-overlay" id="transactionModal">
+    <div class="modal-box" style="max-width:560px;">
+        <h4>➕ 记一笔</h4>
+        <form id="transactionForm" onsubmit="return saveTransaction()">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+                <div>
+                    <label class="form-label">类型 *</label>
+                    <select class="form-select" id="tType" onchange="updateCategories(); loadMemberOptions();">
+                        <option value="income">收入</option>
+                        <option value="expense">支出</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">日期 *</label>
+                    <input class="form-control" id="tDate" type="date" required>
+                </div>
+                <div>
+                    <label class="form-label">会员（可选）</label>
+                    <select class="form-select" id="tMember">
+                        <option value="">-- 不关联会员 --</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;">
+                <div>
+                    <label class="form-label">分类</label>
+                    <select class="form-select" id="tCategory">
+                        <option value="会费收入">会费收入</option>
+                        <option value="续费收入">续费收入</option>
+                        <option value="其他收入">其他收入</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">金额 (元) *</label>
+                    <input class="form-control" id="tAmount" type="number" step="0.01" min="0" required>
+                </div>
+            </div>
+            <div style="margin-top:12px;">
+                <label class="form-label">备注</label>
+                <textarea class="form-control" id="tNotes" rows="2"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('transactionModal')">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var currentPage = 1;
+var allMembersCache = [];
+var trendChartInstance = null;
+
+var REFRESH_INTERVAL = 30; // 秒
+var refreshTimer = null;
+
+function refreshFinance() {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    loadTransactions(1);
+    loadSummary();
+    // 设置下一次自动刷新
+    refreshTimer = setTimeout(refreshFinance, REFRESH_INTERVAL * 1000);
+}
+
+function loadTransactions(page) {
+    currentPage = page;
+    var ttype = document.getElementById('typeFilter').value;
+    var month = document.getElementById('monthFilter').value || '';
+    var url = '/api/transactions?page=' + page;
+    if (ttype) url += '&type=' + ttype;
+    if (month) url += '&month=' + month;
+
+    fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            var tbody = document.getElementById('transactionsBody');
+            tbody.innerHTML = '';
+            document.getElementById('totalCount').textContent = '共 ' + d.total + ' 条记录';
+
+            d.transactions.forEach(function(t){
+                var badge = t.type === 'income' ? 'badge-income' : 'badge-expense';
+                var label = t.type === 'income' ? '收入' : '支出';
+                var color = t.type === 'income' ? '#22c55e' : '#ef4444';
+                tbody.innerHTML += '<tr>' +
+                    '<td>' + t.date + '</td>' +
+                    '<td><span class="badge ' + badge + '">' + label + '</span></td>' +
+                    '<td>' + escHtml(t.category || '-') + '</td>' +
+                    '<td>' + (t.member_name ? '<span style="color:#4f46e5;font-weight:500;">' + escHtml(t.member_name) + '</span>' : '<span style="color:#bbb;">-</span>') + '</td>' +
+                    '<td style="color:' + color + ';font-weight:600;">' + (t.type === 'income' ? '+' : '-') + '¥' + (t.amount || 0).toLocaleString() + '</td>' +
+                    '<td>' + escHtml(t.notes || '-') + '</td>' +
+                    '<td><button class="btn btn-sm btn-danger" onclick="deleteTransaction(' + t.id + ')">删除</button></td>' +
+                '</tr>';
+            });
+
+            renderPagination('transactionsPagination', d.total, d.page, d.per_page, loadTransactions);
+        });
+}
+
+function loadSummary() {
+    fetch('/api/finance/summary')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            var monthly = d.monthly || [];
+            var latest = monthly.length > 0 ? monthly[monthly.length - 1] : { income: 0, expense: 0, profit: 0, cost: 0, card_consumed: 0, net_cash_flow: 0, net_debt: 0 };
+
+            document.getElementById('summaryIncome').textContent = '¥' + (d.month_income || 0).toLocaleString();
+            document.getElementById('summaryExpense').textContent = '¥' + (d.total_cost || 0).toLocaleString();
+            document.getElementById('summaryCardConsume').textContent = '¥' + (d.card_consumption || 0).toLocaleString();
+            document.getElementById('summaryProfit').textContent = '¥' + (d.profit || 0).toLocaleString();
+            document.getElementById('summaryNetCashFlow').textContent = '¥' + (d.net_cash_flow || 0).toLocaleString();
+            document.getElementById('summaryNetDebt').textContent = '¥' + (d.net_debt || 0).toLocaleString();
+            document.getElementById('summaryCashBalance').textContent = '¥' + (d.cash_balance || 0).toLocaleString();
+            document.getElementById('summaryInitialCashFlow').textContent = '¥' + (d.initial_cash_flow || 0).toLocaleString();
+            document.getElementById('summaryLiability').textContent = '¥' + (d.liability || 0).toLocaleString();
+
+            // 瑜伽馆评级
+            var sc = d.studio_class || 'B';
+            var scEl = document.getElementById('summaryStudioClass');
+            scEl.textContent = sc + ' 类瑜伽馆';
+            if (sc === 'A') {
+                scEl.style.color = '#16a34a';
+                scEl.parentElement.style.background = '#f0fdf4';
+                scEl.parentElement.style.borderColor = '#22c55e';
+            } else {
+                scEl.style.color = '#dc2626';
+                scEl.parentElement.style.background = '#fef2f2';
+                scEl.parentElement.style.borderColor = '#ef4444';
+            }
+
+            // 成本明细
+            var cd = d.cost_detail || {};
+            document.getElementById('costRent').textContent = '¥' + (cd['房租'] || 0).toLocaleString();
+            document.getElementById('costSalary').textContent = '¥' + (cd['工资'] || 0).toLocaleString();
+            document.getElementById('costUtility').textContent = '¥' + (cd['水电煤'] || 0).toLocaleString();
+            document.getElementById('costOther').textContent = '¥' + (cd['其他'] || 0).toLocaleString();
+
+            renderFinanceTrend(monthly);
+        });
+}
+
+function renderFinanceTrend(data) {
+    var ctx = document.getElementById('financeTrendChart').getContext('2d');
+
+    if (trendChartInstance) trendChartInstance.destroy();
+
+    trendChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(function(d){ return d.month; }),
+            datasets: [
+                { label: '业绩', data: data.map(function(d){ return d.income || 0; }), backgroundColor: 'rgba(34,197,94,0.7)', borderRadius: 4 },
+                { label: '成本', data: data.map(function(d){ return d.cost || 0; }), backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 4 },
+                { label: '消卡', data: data.map(function(d){ return d.card_consumed || 0; }), backgroundColor: 'rgba(139,92,246,0.7)', borderRadius: 4 },
+                { label: '利润', data: data.map(function(d){ return d.income - (d.cost || 0); }), type: 'line', borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.3, pointBackgroundColor: '#22c55e', yAxisID: 'y1' },
+                { label: '现金流', data: data.map(function(d){ return d.net_cash_flow || 0; }), type: 'line', borderColor: '#f59e0b', backgroundColor: 'transparent', tension: 0.3, pointBackgroundColor: '#f59e0b', yAxisID: 'y1' },
+                { label: '负债变化', data: data.map(function(d){ return d.net_debt || 0; }), type: 'line', borderColor: '#6366f1', backgroundColor: 'transparent', tension: 0.3, pointBackgroundColor: '#6366f1', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 10 } } },
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: '金额 (元)' }, ticks: { callback: function(v){ return '¥' + v; } } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: '利润/现金流/负债' }, grid: { drawOnChartArea: false }, ticks: { callback: function(v){ return '¥' + v; } } }
+            }
+        }
+    });
+}
+
+function loadMemberOptions() {
+    if (allMembersCache.length === 0) {
+        fetch('/api/members/all')
+            .then(function(r){ return r.json(); })
+            .then(function(data){
+                allMembersCache = data;
+                renderMemberOptions();
+            });
+    } else {
+        renderMemberOptions();
+    }
+}
+
+function renderMemberOptions() {
+    var sel = document.getElementById('tMember');
+    sel.innerHTML = '<option value="">-- 不关联会员 --</option>';
+    allMembersCache.forEach(function(m){
+        sel.innerHTML += '<option value="' + m.id + '">' + escHtml(m.name) + ' (' + escHtml(m.card_type || '无卡') + ')</option>';
+    });
+}
+
+function openInitCashModal() {
+    var current = document.getElementById('summaryInitialCashFlow').textContent.replace('¥','').replace(/,/g,'');
+    document.getElementById('initCashInput').value = current;
+    document.getElementById('initCashModal').classList.add('show');
+    document.getElementById('initCashInput').focus();
+}
+
+function saveInitCash() {
+    var val = parseFloat(document.getElementById('initCashInput').value) || 0;
+    fetch('/api/finance/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ key: 'initial_cash_flow', value: val })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('初始现金流已更新为 ¥' + val.toLocaleString());
+            closeModal('initCashModal');
+            loadSummary();
+        } else {
+            showToast('保存失败', 'error');
+        }
+    });
+}
+
+function openAddTransactionModal() {
+    document.getElementById('transactionForm').reset();
+    document.getElementById('tDate').value = new Date().toISOString().slice(0,10);
+    loadMemberOptions();
+    document.getElementById('transactionModal').classList.add('show');
+}
+
+function updateCategories() {
+    var type = document.getElementById('tType').value;
+    var cat = document.getElementById('tCategory');
+    cat.innerHTML = '';
+    if (type === 'income') {
+        cat.innerHTML = '<option>会费收入（私教）</option><option>会费收入（小班）</option><option>会费收入（私教月卡）</option><option>会费收入（小班月卡）</option><option>续费收入（私教）</option><option>续费收入（小班）</option><option>续费收入（私教月卡）</option><option>续费收入（小班月卡）</option><option>私教收入</option><option>其他收入</option>';
+    } else {
+        cat.innerHTML = '<option>房租</option><option>工资（全职）</option><option>工资（兼职）</option><option>水电费</option><option>燃气费</option><option>物业费</option><option>器材采购</option><option>耗材用品</option><option>营销推广</option><option>培训学习</option><option>其他支出</option>';
+    }
+}
+
+function saveTransaction() {
+    var data = {
+        date: document.getElementById('tDate').value,
+        type: document.getElementById('tType').value,
+        category: document.getElementById('tCategory').value,
+        amount: parseFloat(document.getElementById('tAmount').value) || 0,
+        notes: document.getElementById('tNotes').value,
+        member_id: parseInt(document.getElementById('tMember').value) || null
+    };
+
+    fetch('/api/transactions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if (d.success) {
+            showToast('记录已添加');
+            closeModal('transactionModal');
+            loadTransactions(currentPage);
+            loadSummary();
+        }
+    });
+    return false;
+}
+
+function deleteTransaction(id) {
+    if (!confirm('确定删除这条记录吗？')) return;
+    fetch('/api/transactions/' + id, { method: 'DELETE' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (d.success) {
+                showToast('记录已删除');
+                loadTransactions(currentPage);
+                loadSummary();
+            }
+        });
+}
+
+function transactionsPaginationPage(p) { loadTransactions(p); }
+
+// 初始化过滤月份
+document.getElementById('monthFilter').value = new Date().toISOString().slice(0,7);
+
+loadTransactions(1);
+loadSummary();
+// 自动刷新
+refreshTimer = setTimeout(refreshFinance, REFRESH_INTERVAL * 1000);
+</script>
+{% endblock %}
