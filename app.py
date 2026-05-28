@@ -1352,6 +1352,30 @@ def api_user_info():
     })
 
 
+# ======================== 手机入口 ========================
+
+@app.route('/mobile')
+def mobile_entry():
+    """手机入口页面"""
+    return render_template('mobile.html')
+
+@app.route('/api/tunnel-url')
+def api_tunnel_url():
+    """返回当前公网隧道地址"""
+    import subprocess
+    try:
+        with open('/tmp/cloudflared.log', 'r') as f:
+            content = f.read()
+            import re
+            match = re.search(r'https://[a-z0-9\-]+\.trycloudflare\.com', content)
+            if match:
+                return jsonify({'url': match.group()})
+    except:
+        pass
+    # 返回当前请求的 origin
+    return jsonify({'url': request.host_url.rstrip('/')})
+
+
 # ======================== 启动 ========================
 
 def open_browser():
