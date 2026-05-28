@@ -9,3 +9,4 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.9.7
+    healthCheckPath: /login
