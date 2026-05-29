@@ -44,3 +44,7 @@ build/
 # 打包产物
 *.icns
 icon.iconset/
+
+# 打包文件
+*.zip
+start_server.sh
