@@ -14,7 +14,7 @@ import hashlib
 from functools import wraps
 
 app = Flask(__name__)
-app.secret_key = 'yoga_studio_secret_key_2026'  # 生产环境应使用环境变量
+app.secret_key = os.environ.get('SECRET_KEY', 'yoga_studio_secret_key_2026')
 
 # 处理 PyInstaller 打包后的路径
 if getattr(sys, 'frozen', False):
@@ -22,7 +22,11 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DB_PATH = os.path.join(BASE_DIR, 'yoga.db')
+# Render.com 云部署：使用持久化磁盘存储数据库
+if os.path.isdir('/data'):
+    DB_PATH = '/data/yoga.db'
+else:
+    DB_PATH = os.path.join(BASE_DIR, 'yoga.db')
 # ======================== 自动备份功能 ========================
 def _auto_backup():
     """启动时自动备份数据库"""

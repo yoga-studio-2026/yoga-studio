@@ -3,10 +3,16 @@ services:
     name: yoga-studio
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     envVars:
       - key: FLASK_ENV
         value: production
       - key: PYTHON_VERSION
-        value: 3.9.7
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+    disk:
+      name: yoga-data
+      mountPath: /data
+      sizeGB: 1
     healthCheckPath: /login
