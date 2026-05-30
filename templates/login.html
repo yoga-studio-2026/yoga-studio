@@ -157,47 +157,59 @@
             <!-- 注册表单 -->
             <form method="POST" action="{{ url_for('register') }}">
                 <div class="form-floating">
-                    <input type="text" class="form-control" id="studio_name" name="studio_name" 
+                    <input type="text" class="form-control" id="studio_name" name="studio_name"
                            placeholder="瑜伽馆名称" required>
                     <label for="studio_name">🏠 瑜伽馆名称</label>
                 </div>
-                
+
                 <div class="form-floating">
-                    <input type="text" class="form-control" id="username" name="username" 
+                    <input type="text" class="form-control" id="username" name="username"
                            placeholder="用户名" required>
                     <label for="username">👤 用户名（用于登录）</label>
                 </div>
-                
+
                 <div class="form-floating">
-                    <input type="password" class="form-control" id="password" name="password" 
+                    <input type="tel" class="form-control" id="phone" name="phone"
+                           placeholder="手机号">
+                    <label for="phone">📱 手机号（用于找回密码）</label>
+                </div>
+
+                <div class="form-floating">
+                    <input type="password" class="form-control" id="password" name="password"
                            placeholder="密码" required minlength="6">
                     <label for="password">🔒 密码</label>
                 </div>
                 <p class="password-hint">密码至少6位</p>
-                
+
                 <div class="form-floating">
-                    <input type="password" class="form-control" id="password2" name="password2" 
+                    <input type="password" class="form-control" id="password2" name="password2"
                            placeholder="确认密码" required>
                     <label for="password2">🔒 确认密码</label>
                 </div>
-                
+
                 <button type="submit" class="btn btn-primary btn-login">创建账户</button>
             </form>
             {% else %}
             <!-- 登录表单 -->
             <form method="POST" action="{{ url_for('login') }}">
                 <div class="form-floating">
-                    <input type="text" class="form-control" id="username" name="username" 
+                    <input type="text" class="form-control" id="username" name="username"
                            placeholder="用户名" required autofocus>
-                    <label for="username">👤 用户名</label>
+                    <label for="username">👤 用户名 / 手机号</label>
                 </div>
-                
+
                 <div class="form-floating">
-                    <input type="password" class="form-control" id="password" name="password" 
+                    <input type="password" class="form-control" id="password" name="password"
                            placeholder="密码" required>
                     <label for="password">🔒 密码</label>
                 </div>
-                
+
+                <div class="text-end mb-2">
+                    <a href="{{ url_for('forgot_password') }}" style="color: #667eea; text-decoration: none; font-size: 14px;">
+                        找回密码？
+                    </a>
+                </div>
+
                 <button type="submit" class="btn btn-primary btn-login">登录</button>
             </form>
             {% endif %}

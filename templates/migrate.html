@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据库迁移 - 瑜伽馆管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        .card-custom {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            width: 100%;
+            max-width: 520px;
+            margin: 20px;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .card-header h1 { font-size: 28px; font-weight: 600; margin-bottom: 8px; }
+        .card-header p { opacity: 0.9; font-size: 14px; }
+        .card-body { padding: 40px 30px; }
+        .form-floating { margin-bottom: 20px; }
+        .form-floating input, .form-control-file {
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            padding: 16px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .form-floating input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .form-floating label { padding: 16px; color: #888; }
+        .btn-primary {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .btn-danger {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            border: none;
+            transition: all 0.3s;
+            margin-top: 10px;
+            color: white;
+        }
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(238, 90, 36, 0.3);
+        }
+        .card-footer {
+            text-align: center;
+            padding: 20px 30px 30px;
+            color: #888;
+            font-size: 14px;
+        }
+        .card-footer a { color: #667eea; text-decoration: none; font-weight: 600; }
+        .card-footer a:hover { text-decoration: underline; }
+        .alert { border-radius: 10px; margin-bottom: 20px; }
+        .icon-big { font-size: 48px; margin-bottom: 10px; }
+        .file-drop {
+            border: 2px dashed #ccc;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .file-drop:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        .file-drop .hint { font-size: 12px; color: #888; margin-top: 10px; }
+        .file-drop input { display: none; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .stat-item {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        .stat-item .num { font-size: 24px; font-weight: 700; color: #667eea; }
+        .stat-item .label { font-size: 12px; color: #888; }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="card-custom">
+        <div class="card-header">
+            <div class="icon-big">📤</div>
+            <h1>数据库迁移</h1>
+            <p>将本地数据上传到云服务器</p>
+        </div>
+
+        <div class="card-body">
+            <div class="warning-box">
+                ⚠️ <strong>重要提示：</strong>上传新数据库会<strong>覆盖</strong>服务器上的现有数据。
+                服务器上的旧数据会自动备份，不会丢失。
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div id="result-area" style="display:none;">
+                <div class="alert alert-success" id="success-message"></div>
+                <div id="stats-area" style="display:none;">
+                    <p style="font-weight:600;color:#333;">迁移数据统计：</p>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="num" id="stat-users">0</div>
+                            <div class="label">用户账号</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="num" id="stat-members">0</div>
+                            <div class="label">会员</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="num" id="stat-classes">0</div>
+                            <div class="label">课程记录</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="num" id="stat-transactions">0</div>
+                            <div class="label">交易记录</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="num" id="stat-attendance">0</div>
+                            <div class="label">出勤记录</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="error-area" style="display:none;">
+                    <div class="alert alert-danger" id="error-message"></div>
+                </div>
+            </div>
+
+            <form id="migrate-form" enctype="multipart/form-data">
+                <div class="file-drop" id="file-drop" onclick="document.getElementById('db_file').click()">
+                    <div style="font-size:36px;margin-bottom:10px;">📂</div>
+                    <div style="font-weight:600;color:#333;">点击选择数据库文件</div>
+                    <div class="hint">支持 .db 格式（如 yoga.db）</div>
+                    <input type="file" id="db_file" name="db_file" accept=".db" required>
+                </div>
+                <div id="file-name" style="display:none;margin-bottom:15px;padding:10px;background:#e8f5e9;border-radius:8px;text-align:center;font-weight:600;color:#2e7d32;"></div>
+
+                <div class="form-floating">
+                    <input type="password" class="form-control" id="admin_pass" name="admin_pass"
+                           placeholder="管理员密码" required>
+                    <label for="admin_pass">🔑 管理员密码</label>
+                </div>
+
+                <button type="submit" class="btn-danger" id="migrate-btn">
+                    ⚠️ 开始迁移（将覆盖服务器数据）
+                </button>
+            </form>
+        </div>
+
+        <div class="card-footer">
+            <a href="{{ url_for('login') }}">← 返回登录</a>
+        </div>
+    </div>
+
+    <script>
+        // 显示选中的文件名
+        document.getElementById('db_file').addEventListener('change', function(e) {
+            const nameDiv = document.getElementById('file-name');
+            if (this.files.length > 0) {
+                nameDiv.textContent = '✅ 已选择: ' + this.files[0].name;
+                nameDiv.style.display = 'block';
+            } else {
+                nameDiv.style.display = 'none';
+            }
+        });
+
+        // 提交表单
+        document.getElementById('migrate-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+            const btn = document.getElementById('migrate-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ 正在迁移...';
+
+            fetch('/api/migrate-database', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('result-area').style.display = 'block';
+                if (data.success) {
+                    document.getElementById('success-message').textContent = data.message;
+                    if (data.stats) {
+                        document.getElementById('stat-users').textContent = data.stats.users;
+                        document.getElementById('stat-members').textContent = data.stats.members;
+                        document.getElementById('stat-classes').textContent = data.stats.classes;
+                        document.getElementById('stat-transactions').textContent = data.stats.transactions;
+                        document.getElementById('stat-attendance').textContent = data.stats.attendance;
+                        document.getElementById('stats-area').style.display = 'block';
+                    }
+                } else {
+                    document.getElementById('error-message').textContent = data.error || '迁移失败';
+                    document.getElementById('error-area').style.display = 'block';
+                }
+                btn.disabled = false;
+                btn.textContent = '⚠️ 开始迁移（将覆盖服务器数据）';
+            })
+            .catch(err => {
+                document.getElementById('result-area').style.display = 'block';
+                document.getElementById('error-area').style.display = 'block';
+                document.getElementById('error-message').textContent = '网络错误: ' + err.message;
+                btn.disabled = false;
+                btn.textContent = '⚠️ 开始迁移（将覆盖服务器数据）';
+            });
+        });
+    </script>
+</body>
+</html>

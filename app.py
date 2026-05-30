@@ -11,6 +11,7 @@ import threading
 from datetime import datetime, timedelta
 import random
 import hashlib
+import string
 from functools import wraps
 
 app = Flask(__name__)
@@ -36,7 +37,7 @@ def _auto_backup():
     if os.path.exists(DB_PATH):
         existing_backups = sorted([f for f in os.listdir(backup_dir) if f.startswith('yoga_') and f.endswith('.db')])
         
-        while len(existing_backups) >= 5:
+        while len(existing_backups) >= 50:
             oldest = existing_backups.pop(0)
             try:
                 os.remove(os.path.join(backup_dir, oldest))
@@ -79,6 +80,11 @@ def _hash_password(password):
 def _check_password(password, password_hash):
     """验证密码"""
     return _hash_password(password) == password_hash
+
+def _generate_token(length=32):
+    """生成随机令牌"""
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
 
 # ======================== 辅助函数 ========================
 
@@ -141,9 +147,31 @@ def init_db():
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 studio_name TEXT NOT NULL,
+                phone TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                reset_token TEXT DEFAULT '',
+                reset_token_expiry TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # 迁移：为旧表添加新字段（如果不存在）
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN reset_token TEXT DEFAULT ''")
+        except:
+            pass
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN reset_token_expiry TEXT DEFAULT ''")
+        except:
+            pass
         
         # 创建配置表（用于存储初始现金流等）
         db.execute("""
@@ -272,20 +300,26 @@ def init_db():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """登录页面"""
+    """登录页面（支持用户名或手机号登录）"""
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
+        login_id = request.form.get('username', '').strip()  # 可以是用户名或手机号
         password = request.form.get('password', '')
-        
-        if not username or not password:
-            flash('请输入用户名和密码', 'error')
+
+        if not login_id or not password:
+            flash('请输入用户名/手机号和密码', 'error')
             return render_template('login.html')
-        
+
         with get_db() as db:
+            # 先按用户名查找，再按手机号查找
             user = db.execute(
-                "SELECT * FROM users WHERE username = ?", (username,)
+                "SELECT * FROM users WHERE username = ?", (login_id,)
             ).fetchone()
-        
+
+            if not user:
+                user = db.execute(
+                    "SELECT * FROM users WHERE phone = ? AND phone != ''", (login_id,)
+                ).fetchone()
+
         if user and _check_password(password, user['password_hash']):
             session['user_id'] = user['id']
             session['username'] = user['username']
@@ -293,8 +327,8 @@ def login():
             flash('登录成功', 'success')
             return redirect(url_for('dashboard'))
         else:
-            flash('用户名或密码错误', 'error')
-    
+            flash('用户名/手机号或密码错误', 'error')
+
     return render_template('login.html')
 
 
@@ -306,51 +340,61 @@ def register():
         password = request.form.get('password', '')
         password2 = request.form.get('password2', '')
         studio_name = request.form.get('studio_name', '').strip()
-        
+        phone = request.form.get('phone', '').strip()
+
         # 验证
         if not username or not password:
             flash('请填写用户名和密码', 'error')
             return render_template('login.html', show_register=True)
-        
+
         if len(password) < 6:
             flash('密码至少6位', 'error')
             return render_template('login.html', show_register=True)
-        
+
         if password != password2:
             flash('两次密码不一致', 'error')
             return render_template('login.html', show_register=True)
-        
+
         if not studio_name:
             flash('请输入瑜伽馆名称', 'error')
             return render_template('login.html', show_register=True)
-        
+
         # 检查用户名是否已存在
         with get_db() as db:
             existing = db.execute(
                 "SELECT id FROM users WHERE username = ?", (username,)
             ).fetchone()
-            
+
             if existing:
                 flash('用户名已存在', 'error')
                 return render_template('login.html', show_register=True)
-            
+
+            # 检查手机号是否已被使用
+            if phone:
+                phone_exists = db.execute(
+                    "SELECT id FROM users WHERE phone = ? AND phone != ''", (phone,)
+                ).fetchone()
+                if phone_exists:
+                    flash('该手机号已被其他账号使用', 'error')
+                    return render_template('login.html', show_register=True)
+
             # 创建用户
             password_hash = _hash_password(password)
             db.execute(
-                "INSERT INTO users (username, password_hash, studio_name) VALUES (?, ?, ?)",
-                (username, password_hash, studio_name)
+                "INSERT INTO users (username, password_hash, studio_name, phone) VALUES (?, ?, ?, ?)",
+                (username, password_hash, studio_name, phone)
             )
             user_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
-            
+
             # 设置默认初始现金流为0
             db.execute(
                 "INSERT INTO config (key, value, user_id) VALUES ('initial_cash_flow', '0', ?)",
                 (user_id,)
             )
-        
+
         flash('注册成功，请登录', 'success')
         return redirect(url_for('login'))
-    
+
     return render_template('login.html', show_register=True)
 
 
@@ -360,6 +404,135 @@ def logout():
     session.clear()
     flash('已退出登录', 'success')
     return redirect(url_for('login'))
+
+
+# ======================== 找回密码 ========================
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """找回密码 - 第一步：验证身份"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        phone = request.form.get('phone', '').strip()
+
+        if not username or not phone:
+            flash('请填写用户名和手机号', 'error')
+            return render_template('forgot_password.html')
+
+        with get_db() as db:
+            user = db.execute(
+                "SELECT * FROM users WHERE username = ? AND phone = ? AND phone != ''",
+                (username, phone)
+            ).fetchone()
+
+            if not user:
+                flash('用户名与手机号不匹配，请确认信息正确', 'error')
+                return render_template('forgot_password.html')
+
+            # 生成重置令牌（有效期30分钟）
+            token = _generate_token(48)
+            expiry = (datetime.now() + timedelta(minutes=30)).strftime('%Y-%m-%d %H:%M:%S')
+
+            db.execute(
+                "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
+                (token, expiry, user['id'])
+            )
+
+            # 生成重置链接
+            reset_url = url_for('reset_password', token=token, _external=True)
+            flash(f'密码重置链接已生成（有效期30分钟）', 'success')
+            return render_template('forgot_password.html', reset_url=reset_url, show_link=True)
+
+    return render_template('forgot_password.html', show_link=False)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """找回密码 - 第二步：重置密码"""
+    if not token:
+        flash('无效的令牌', 'error')
+        return redirect(url_for('login'))
+
+    with get_db() as db:
+        user = db.execute(
+            "SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry >= ?",
+            (token, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        ).fetchone()
+
+        if not user:
+            # 检查是否是过期令牌
+            expired_user = db.execute(
+                "SELECT * FROM users WHERE reset_token = ?",
+                (token,)
+            ).fetchone()
+            if expired_user:
+                flash('重置链接已过期，请重新申请', 'error')
+            else:
+                flash('无效的重置链接', 'error')
+            return redirect(url_for('forgot_password'))
+
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            password2 = request.form.get('password2', '')
+
+            if not password or len(password) < 6:
+                flash('密码至少6位', 'error')
+                return render_template('reset_password.html', token=token)
+
+            if password != password2:
+                flash('两次密码不一致', 'error')
+                return render_template('reset_password.html', token=token)
+
+            # 更新密码并清除令牌
+            password_hash = _hash_password(password)
+            db.execute(
+                "UPDATE users SET password_hash = ?, reset_token = '', reset_token_expiry = '' WHERE id = ?",
+                (password_hash, user['id'])
+            )
+
+            flash('密码重置成功，请使用新密码登录', 'success')
+            return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token)
+
+
+@app.route('/api/user/update-phone', methods=['POST'])
+@login_required
+def api_update_phone():
+    """更新当前用户的手机号"""
+    user_id = session['user_id']
+    data = request.get_json()
+    phone = data.get('phone', '').strip()
+
+    if not phone:
+        return jsonify({'error': '请输入手机号'}), 400
+
+    with get_db() as db:
+        # 检查手机号是否已被其他用户使用
+        existing = db.execute(
+            "SELECT id FROM users WHERE phone = ? AND phone != '' AND id != ?",
+            (phone, user_id)
+        ).fetchone()
+        if existing:
+            return jsonify({'error': '该手机号已被其他账号使用'}), 400
+
+        db.execute("UPDATE users SET phone = ? WHERE id = ?", (phone, user_id))
+        return jsonify({'success': True, 'message': '手机号已更新'})
+
+
+@app.route('/api/user/profile')
+@login_required
+def api_user_profile():
+    """获取当前用户的详细信息"""
+    user_id = session['user_id']
+    with get_db() as db:
+        user = db.execute(
+            "SELECT id, username, studio_name, phone, email, created_at FROM users WHERE id = ?",
+            (user_id,)
+        ).fetchone()
+        if user:
+            return jsonify(dict(user))
+        return jsonify({'error': '用户不存在'}), 404
 
 
 @app.route('/sw.js')
@@ -1354,6 +1527,79 @@ def api_user_info():
         'username': session.get('username'),
         'studio_name': session.get('studio_name')
     })
+
+
+# ======================== 数据库迁移（安全上传本地数据到 Render） ========================
+
+@app.route('/migrate')
+def migrate_page():
+    """数据库迁移页面"""
+    return render_template('migrate.html')
+
+
+@app.route('/api/migrate-database', methods=['POST'])
+def api_migrate_database():
+    """上传本地数据库到服务器（需要管理员密码验证）"""
+    # 验证管理员密码（默认 Migrate@2026，可在环境变量中修改）
+    admin_pass = request.form.get('admin_pass', '')
+    expected_pass = os.environ.get('MIGRATE_ADMIN_PASS', 'Migrate@2026')
+    if admin_pass != expected_pass:
+        return jsonify({'success': False, 'error': '管理员密码错误'}), 403
+
+    if 'db_file' not in request.files:
+        return jsonify({'success': False, 'error': '请选择数据库文件'}), 400
+
+    file = request.files['db_file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': '未选择文件'}), 400
+
+    if not file.filename.endswith('.db'):
+        return jsonify({'success': False, 'error': '请选择 .db 数据库文件'}), 400
+
+    try:
+        # 1. 备份当前数据库（如果有）
+        if os.path.exists(DB_PATH):
+            backup_dir = os.path.dirname(DB_PATH)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            import shutil
+            backup_path = os.path.join(backup_dir, f'pre_migration_backup_{timestamp}.db')
+            shutil.copy2(DB_PATH, backup_path)
+
+        # 2. 保存上传的数据库
+        file.save(DB_PATH)
+
+        # 3. 验证数据库完整性
+        try:
+            with get_db() as db:
+                db.execute("SELECT COUNT(*) FROM users")
+                user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                member_count = db.execute("SELECT COUNT(*) FROM members").fetchone()[0]
+                class_count = db.execute("SELECT COUNT(*) FROM class_records").fetchone()[0]
+                trans_count = db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+                attend_count = db.execute("SELECT COUNT(*) FROM attendance").fetchone()[0]
+        except Exception as e:
+            # 恢复备份
+            if os.path.exists(backup_path):
+                shutil.copy2(backup_path, DB_PATH)
+            return jsonify({
+                'success': False,
+                'error': f'数据库文件无效：{str(e)}'
+            }), 400
+
+        return jsonify({
+            'success': True,
+            'message': '数据库迁移成功！现有数据已备份。',
+            'stats': {
+                'users': user_count,
+                'members': member_count,
+                'classes': class_count,
+                'transactions': trans_count,
+                'attendance': attend_count
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'迁移失败：{str(e)}'}), 500
 
 
 # ======================== 手机入口 ========================
