@@ -31,44 +31,61 @@ else:
 # ======================== 自动备份功能 ========================
 def _auto_backup():
     """启动时自动备份数据库"""
-    backup_dir = os.path.join(BASE_DIR, 'backups')
-    os.makedirs(backup_dir, exist_ok=True)
-    
-    if os.path.exists(DB_PATH):
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_path = os.path.join(backup_dir, f'yoga_{timestamp}.db')
-        
-        import shutil
-        shutil.copy2(DB_PATH, backup_path)
-        print(f'[自动备份] 已保存到: {backup_path}')
+    try:
+        backup_dir = os.path.join(BASE_DIR, 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
 
-_auto_backup()
+        if os.path.exists(DB_PATH):
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_path = os.path.join(backup_dir, f'yoga_{timestamp}.db')
+
+            import shutil
+            shutil.copy2(DB_PATH, backup_path)
+            print(f'[自动备份] 已保存到: {backup_path}')
+    except Exception as e:
+        print(f'[自动备份] 跳过（{e}）')
+
+try:
+    _auto_backup()
+except:
+    pass
 
 # ======================== 每日定时自动备份 ========================
 def _scheduled_backup():
     """每日凌晨3点自动备份数据库（后台守护线程）"""
-    backup_dir = os.path.join(BASE_DIR, 'backups')
-    os.makedirs(backup_dir, exist_ok=True)
+    try:
+        backup_dir = os.path.join(BASE_DIR, 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
+    except:
+        pass
 
     while True:
-        now = datetime.now()
-        next_backup = now.replace(hour=3, minute=0, second=0, microsecond=0)
-        if next_backup <= now:
-            next_backup = next_backup + timedelta(days=1)
-        wait_seconds = (next_backup - now).total_seconds()
+        try:
+            now = datetime.now()
+            next_backup = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            if next_backup <= now:
+                next_backup = next_backup + timedelta(days=1)
+            wait_seconds = (next_backup - now).total_seconds()
 
-        import time as _time
-        _time.sleep(wait_seconds)
+            import time as _time
+            _time.sleep(wait_seconds)
 
-        if os.path.exists(DB_PATH):
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            import shutil
-            backup_path = os.path.join(backup_dir, f'yoga_{timestamp}.db')
-            shutil.copy2(DB_PATH, backup_path)
-            print(f'[定时备份] 已保存到: {backup_path}')
+            if os.path.exists(DB_PATH):
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                import shutil
+                backup_path = os.path.join(backup_dir, f'yoga_{timestamp}.db')
+                shutil.copy2(DB_PATH, backup_path)
+                print(f'[定时备份] 已保存到: {backup_path}')
+        except Exception as e:
+            print(f'[定时备份] 跳过（{e}）')
+            import time as _time
+            _time.sleep(3600)  # 出错后等1小时再重试
 
-_backup_thread = threading.Thread(target=_scheduled_backup, daemon=True)
-_backup_thread.start()
+try:
+    _backup_thread = threading.Thread(target=_scheduled_backup, daemon=True)
+    _backup_thread.start()
+except:
+    pass
 
 
 
@@ -1661,7 +1678,10 @@ def open_browser():
 
 
 # 初始化数据库（gunicorn 导入时也会执行，确保表结构存在）
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print(f'[数据库初始化] 警告：{e}')
 
 if __name__ == '__main__':
     threading.Thread(target=open_browser, daemon=True).start()
