@@ -35,15 +35,6 @@ def _auto_backup():
     os.makedirs(backup_dir, exist_ok=True)
     
     if os.path.exists(DB_PATH):
-        existing_backups = sorted([f for f in os.listdir(backup_dir) if f.startswith('yoga_') and f.endswith('.db')])
-        
-        while len(existing_backups) >= 50:
-            oldest = existing_backups.pop(0)
-            try:
-                os.remove(os.path.join(backup_dir, oldest))
-            except:
-                pass
-        
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_path = os.path.join(backup_dir, f'yoga_{timestamp}.db')
         
@@ -52,6 +43,32 @@ def _auto_backup():
         print(f'[自动备份] 已保存到: {backup_path}')
 
 _auto_backup()
+
+# ======================== 每日定时自动备份 ========================
+def _scheduled_backup():
+    """每日凌晨3点自动备份数据库（后台守护线程）"""
+    backup_dir = os.path.join(BASE_DIR, 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
+
+    while True:
+        now = datetime.now()
+        next_backup = now.replace(hour=3, minute=0, second=0, microsecond=0)
+        if next_backup <= now:
+            next_backup = next_backup + timedelta(days=1)
+        wait_seconds = (next_backup - now).total_seconds()
+
+        import time as _time
+        _time.sleep(wait_seconds)
+
+        if os.path.exists(DB_PATH):
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            import shutil
+            backup_path = os.path.join(backup_dir, f'yoga_{timestamp}.db')
+            shutil.copy2(DB_PATH, backup_path)
+            print(f'[定时备份] 已保存到: {backup_path}')
+
+_backup_thread = threading.Thread(target=_scheduled_backup, daemon=True)
+_backup_thread.start()
 
 
 
@@ -99,24 +116,37 @@ def _month_range(today, offset=0):
 
 
 def _calc_cost_detail(db, month_start, month_end, user_id):
-    """计算指定月份的成本明细（含所有支出）"""
-    cost_detail = {}
+    """计算指定月份的成本明细（含所有支出，按大类展示）"""
+    category_map = {
+        '房租': '房租',
+        '工资（全职）': '工资',
+        '工资（兼职）': '工资',
+        '水电费': '水电煤',
+        '燃气费': '水电煤',
+        '水电煤': '水电煤',
+        '器材采购': '其他',
+        '耗材用品': '其他',
+        '营销推广': '其他',
+        '培训学习': '其他',
+        '其他支出': '其他',
+        '其他': '其他',
+    }
+    display_categories = ['房租', '工资', '水电煤', '其他']
     
-    # 固定分类
-    for cat in ['房租', '工资', '水电煤', '其他']:
-        cost_detail[cat] = db.execute("""
-            SELECT COALESCE(SUM(amount), 0) FROM transactions 
-            WHERE type='expense' AND category=? AND date >= ? AND date < ? AND user_id=?
-        """, (cat, month_start, month_end, user_id)).fetchone()[0]
+    # 初始化展示大类为0
+    cost_detail = {cat: 0 for cat in display_categories}
     
-    # 其他未分类支出（不在固定分类里的）
-    other_expense = db.execute("""
-        SELECT COALESCE(SUM(amount), 0) FROM transactions 
-        WHERE type='expense' AND category NOT IN ('房租', '工资', '水电煤', '其他') AND date >= ? AND date < ? AND user_id=?
-    """, (month_start, month_end, user_id)).fetchone()[0]
+    # 按原始分类统计所有支出
+    all_rows = db.execute("""
+        SELECT COALESCE(category, '其他'), COALESCE(SUM(amount), 0) FROM transactions
+        WHERE type='expense' AND date >= ? AND date < ? AND user_id=?
+        GROUP BY category
+    """, (month_start, month_end, user_id)).fetchall()
     
-    # 合并到"其他"分类
-    cost_detail['其他'] += other_expense
+    # 归到大类
+    for raw_cat, total in all_rows:
+        mapped = category_map.get(raw_cat, '其他')
+        cost_detail[mapped] = cost_detail.get(mapped, 0) + total
     
     return cost_detail
 
@@ -1250,7 +1280,7 @@ def api_finance_summary():
             
             cost_rows = db.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM transactions 
-                WHERE type='expense' AND category IN ('房租','工资','水电煤','其他') AND date >= ? AND date < ? AND user_id=?
+                WHERE type='expense' AND date >= ? AND date < ? AND user_id=?
             """, (ms, me, user_id)).fetchone()[0]
             
             card_rows = db.execute("""
@@ -1275,12 +1305,7 @@ def api_finance_summary():
         next_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
         month_end = next_month.strftime('%Y-%m-%d')
         
-        cost_detail = {}
-        for cat in ['房租', '工资', '水电煤', '其他']:
-            cost_detail[cat] = db.execute("""
-                SELECT COALESCE(SUM(amount), 0) FROM transactions 
-                WHERE type='expense' AND category=? AND date >= ? AND date < ? AND user_id=?
-            """, (cat, month_start, month_end, user_id)).fetchone()[0]
+        cost_detail = _calc_cost_detail(db, month_start, month_end, user_id)
         total_cost = sum(cost_detail.values())
         
         card_consume = db.execute("""
@@ -1635,9 +1660,10 @@ def open_browser():
     webbrowser.open('http://localhost:5000')
 
 
+# 初始化数据库（gunicorn 导入时也会执行，确保表结构存在）
+init_db()
+
 if __name__ == '__main__':
-    init_db()
-    
     threading.Thread(target=open_browser, daemon=True).start()
     
     print("\n" + "=" * 40)
